@@ -3,6 +3,7 @@ import tldextract
 import urllib.parse
 import os
 import json
+import random
 
 DATA_DIR = "ml/data/raw"
 OUTPUT_DIR = "ml/data/processed"
@@ -10,15 +11,10 @@ OUTPUT_DIR = "ml/data/processed"
 def normalize_url(url: str) -> str:
     try:
         parsed = urllib.parse.urlparse(url)
-        # Lowercase scheme and host
         scheme = parsed.scheme.lower() if parsed.scheme else "http"
         netloc = parsed.netloc.lower()
-        
-        # Decode percent-encoding
         path = urllib.parse.unquote(parsed.path)
         query = urllib.parse.unquote(parsed.query)
-        
-        # Reconstruct, stripping fragments
         return urllib.parse.urlunparse((scheme, netloc, path, '', query, ''))
     except Exception:
         return url.lower()
@@ -29,8 +25,36 @@ def extract_domain(url: str) -> str:
         return f"{ext.domain}.{ext.suffix}"
     return ext.domain or ""
 
+def augment_legit_url(url: str) -> str:
+    """Randomly append paths, queries, and subdomains to prevent ML structural bias"""
+    if random.random() < 0.2:
+        return url # 20% remain naked
+        
+    # 50% chance to add www.
+    if random.random() < 0.5:
+        url = url.replace("http://", "http://www.").replace("https://", "https://www.")
+        
+    paths = [
+        "/", "/index.html", "/about", "/contact", "/login", "/register", 
+        "/search", "/products/view/123", "/api/v1/users", "/blog/article-name-here",
+        "/wp-content/uploads/image.jpg", "/assets/css/style.css", "/download"
+    ]
+    queries = [
+        "", "?q=test", "?id=123", "?ref=twitter", "?page=2", "?lang=en",
+        "?token=abcxyz123", "?utm_source=newsletter&utm_medium=email"
+    ]
+    
+    path = random.choice(paths)
+    query = random.choice(queries) if random.random() < 0.5 else ""
+    
+    if url.endswith("/"):
+        url = url[:-1]
+        
+    return url + path + query
+
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    random.seed(42)
     
     print("Loading raw datasets...")
     dfs = []
@@ -45,6 +69,11 @@ def main():
         
     df = pd.concat(dfs, ignore_index=True)
     print(f"Initial size: {len(df)}")
+    
+    # Augment legit URLs to prevent shortcut learning
+    print("Augmenting legitimate URLs to prevent structural bias...")
+    mask = df['label'] == 0
+    df.loc[mask, 'url'] = df.loc[mask, 'url'].apply(augment_legit_url)
     
     print("Normalizing URLs...")
     df['normalized_url'] = df['url'].apply(normalize_url)
@@ -61,7 +90,6 @@ def main():
     print(f"Removed {before_len - len(df)} exact URL duplicates.")
     
     # 2. Detect and resolve label conflicts
-    # If the same URL has different labels, we drop it entirely for safety
     conflict_urls = df.groupby('normalized_url')['label'].nunique()
     conflict_urls = conflict_urls[conflict_urls > 1].index
     if len(conflict_urls) > 0:
@@ -74,7 +102,6 @@ def main():
     overlap = legit_domains.intersection(phish_domains)
     print(f"Found {len(overlap)} domains present in both classes.")
     
-    # If a domain is in both, it's safer to remove the legitimate entries that share a domain with a phishing entry (e.g. compromised site)
     if overlap:
         drop_mask = (df['label'] == 0) & (df['domain'].isin(overlap))
         df = df[~drop_mask]
@@ -84,7 +111,6 @@ def main():
     df.to_csv(output_path, index=False)
     print(f"Cleaned dataset saved to {output_path}. Final size: {len(df)}")
     
-    # Save manifest
     manifest = {
         "final_size": len(df),
         "legitimate_count": int((df['label'] == 0).sum()),
