@@ -64,10 +64,10 @@ def extract_lexical_features(url: str) -> Dict[str, Any]:
     subdomains = [s for s in ext.subdomain.split('.') if s] if ext.subdomain else []
 
     return {
-        "url_length": len(url),
+        # "url_length": len(url),
         "hostname_length": len(netloc),
-        "path_length": len(path),
-        "query_length": len(query),
+        # "path_length": len(path),
+        # "query_length": len(query),
         "dot_count": url_lower.count('.'),
         "subdomain_count": len(subdomains),
         "hyphen_count": netloc.count('-'),
