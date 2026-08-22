@@ -1,0 +1,59 @@
+{
+  "rules": [
+    {
+      "rule_id": "R_IP_HOST",
+      "weight": 3.0,
+      "severity": "High",
+      "description": "IP address used as hostname instead of a domain name."
+    },
+    {
+      "rule_id": "R_AT_SYMBOL",
+      "weight": 2.5,
+      "severity": "Medium",
+      "description": "URL contains an '@' symbol, which can hide the actual destination."
+    },
+    {
+      "rule_id": "R_BRAND_TOKEN",
+      "weight": 2.0,
+      "severity": "High",
+      "description": "URL contains suspicious tokens often used in phishing (e.g., login, secure)."
+    },
+    {
+      "rule_id": "R_LONG_URL",
+      "weight": 1.0,
+      "severity": "Low",
+      "description": "URL is unusually long (over 75 characters)."
+    },
+    {
+      "rule_id": "R_DEEP_SUBDOMAINS",
+      "weight": 1.5,
+      "severity": "Medium",
+      "description": "URL has an excessive number of subdomains (> 3)."
+    },
+    {
+      "rule_id": "R_SUSPICIOUS_TLD",
+      "weight": 1.5,
+      "severity": "Medium",
+      "description": "Domain uses a high-risk Top-Level Domain (e.g., .tk, .ml)."
+    },
+    {
+      "rule_id": "R_NO_HTTPS",
+      "weight": 1.0,
+      "severity": "Low",
+      "description": "URL uses HTTP instead of secure HTTPS."
+    },
+    {
+      "rule_id": "R_PUNYCODE",
+      "weight": 2.0,
+      "severity": "Medium",
+      "description": "URL hostname contains Punycode/IDN, often used for homoglyph attacks."
+    }
+  ],
+  "thresholds": {
+    "safe_max": 1.9,
+    "suspicious_max": 4.9,
+    "high_risk_min": 5.0
+  },
+  "max_possible_score": 14.5,
+  "version": "1.0"
+}

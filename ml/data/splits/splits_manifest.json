@@ -1,12 +1,15 @@
 {
   "random": {
-    "train": 7189,
-    "val": 1007,
-    "test": 2088
+    "train": 7135,
+    "val": 1013,
+    "test": 2136,
+    "train_phish": 147,
+    "val_phish": 14,
+    "test_phish": 139
   },
   "cross_dataset": {
     "train": 7520,
     "test": 2764
   },
-  "temporal": "Not applicable due to lack of per-row timestamps in current snapshot."
+  "temporal": "Not applicable due to lack of per-row timestamps."
 }

@@ -7,21 +7,32 @@ import json
 DATA_DIR = "ml/data/processed"
 SPLITS_DIR = "ml/data/splits"
 
+def split_stratified_group(df, test_size, random_state=42):
+    """Helper to do a GroupShuffleSplit but stratified by label manually by splitting each class separately."""
+    df_phish = df[df['label'] == 1].copy()
+    df_legit = df[df['label'] == 0].copy()
+    
+    gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
+    
+    train_p_idx, test_p_idx = next(gss.split(df_phish, groups=df_phish['domain']))
+    train_l_idx, test_l_idx = next(gss.split(df_legit, groups=df_legit['domain']))
+    
+    train_df = pd.concat([df_phish.iloc[train_p_idx], df_legit.iloc[train_l_idx]])
+    test_df = pd.concat([df_phish.iloc[test_p_idx], df_legit.iloc[test_l_idx]])
+    
+    # Shuffle the resulting dataframes
+    train_df = train_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    test_df = test_df.sample(frac=1, random_state=random_state).reset_index(drop=True)
+    
+    return train_df, test_df
+
 def create_random_split(df):
-    """Domain-aware random split to prevent domain leakage"""
-    # Use GroupShuffleSplit to ensure domains don't cross boundaries
-    gss = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-    train_idx, test_idx = next(gss.split(df, groups=df['domain']))
+    """Domain-aware random split to prevent domain leakage, stratified by label"""
     
-    train_df = df.iloc[train_idx].copy()
-    test_df = df.iloc[test_idx].copy()
+    train_df, test_df = split_stratified_group(df, test_size=0.2, random_state=42)
     
-    # Further split train into train/val
-    gss_val = GroupShuffleSplit(n_splits=1, test_size=0.125, random_state=42) # 0.125 of 0.8 is 0.1 of total
-    train_idx2, val_idx = next(gss_val.split(train_df, groups=train_df['domain']))
-    
-    val_df = train_df.iloc[val_idx].copy()
-    train_df = train_df.iloc[train_idx2].copy()
+    # 0.125 of 0.8 is 0.1 of total
+    train_df, val_df = split_stratified_group(train_df, test_size=0.125, random_state=42)
     
     split_dir = os.path.join(SPLITS_DIR, "random")
     os.makedirs(split_dir, exist_ok=True)
@@ -33,18 +44,13 @@ def create_random_split(df):
     return {
         "train": len(train_df),
         "val": len(val_df),
-        "test": len(test_df)
+        "test": len(test_df),
+        "train_phish": int(train_df['label'].sum()),
+        "val_phish": int(val_df['label'].sum()),
+        "test_phish": int(test_df['label'].sum())
     }
 
 def create_cross_dataset_split(df):
-    """
-    Simulate cross-dataset split. 
-    Here, train on most of OpenPhish+Tranco, but we ideally need another source.
-    For this mockup, we'll divide based on a hash of the URL to simulate different distributions.
-    In a real scenario, this would be train on PhishTank, test on OpenPhish.
-    """
-    # Since we only have OpenPhish and Tranco, we'll create a synthetic cross-dataset split
-    # by holding out domains starting with specific letters for testing.
     split_dir = os.path.join(SPLITS_DIR, "cross_dataset")
     os.makedirs(split_dir, exist_ok=True)
     
@@ -62,30 +68,16 @@ def create_cross_dataset_split(df):
 
 def main():
     path = os.path.join(DATA_DIR, "cleaned_dataset.csv")
-    if not os.path.exists(path):
-        print(f"Cleaned dataset not found at {path}")
-        return
-        
     df = pd.read_csv(path)
     os.makedirs(SPLITS_DIR, exist_ok=True)
     
     manifest = {}
-    
-    print("Creating Random Split (domain-aware)...")
     manifest['random'] = create_random_split(df)
-    
-    print("Creating Cross-Dataset Split...")
     manifest['cross_dataset'] = create_cross_dataset_split(df)
-    
-    # For temporal split, we normally need timestamps.
-    # Since our datasets are snapshot downloads without per-row timestamps, 
-    # we'll skip the temporal split or synthesize one if needed later.
-    manifest['temporal'] = "Not applicable due to lack of per-row timestamps in current snapshot."
+    manifest['temporal'] = "Not applicable due to lack of per-row timestamps."
     
     with open(os.path.join(SPLITS_DIR, "splits_manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
-        
-    print("Splits created successfully.")
 
 if __name__ == "__main__":
     main()
