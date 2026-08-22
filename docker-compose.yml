@@ -19,14 +19,15 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./backend/app:/app/app
-      - ./ml:/app/ml
+      - .:/app
+      
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-phishguard}:${POSTGRES_PASSWORD:-phishguard_secret}@db:5432/${POSTGRES_DB:-phishguard_db}
+      - PYTHONPATH=/app
     depends_on:
       db:
         condition: service_healthy

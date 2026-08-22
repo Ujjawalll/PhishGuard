@@ -40,12 +40,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="PhishGuard API", version="1.0.0", lifespan=lifespan)
 
+ALLOWED_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "chrome-extension://*,http://localhost:3000,http://localhost:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -54,3 +59,32 @@ app.include_router(scan.router, prefix="/scan", tags=["scan"])
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/model")
+def model_info():
+    import json, os
+    from glob import glob
+
+    model_version = "not_loaded"
+    rule_version = "not_loaded"
+    
+    if scan_module.rule_engine:
+        rule_version = scan_module.rule_engine.config.get("version", "unknown")
+    
+    # Read model version from saved metadata
+    try:
+        paths = glob("ml/models/xgboost_*")
+        latest_path = sorted(paths)[-1]
+        with open(os.path.join(latest_path, "metadata.json")) as f:
+            meta = json.load(f)
+            model_version = meta.get("model_version", os.path.basename(latest_path))
+    except Exception:
+        pass
+
+    return {
+        "model_name": "xgboost",
+        "model_version": model_version,
+        "feature_schema_version": "v1.0",
+        "rule_config_version": rule_version,
+        "fusion_strategy": "or_logic"
+    }

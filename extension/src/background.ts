@@ -30,12 +30,17 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
         'SUSPICIOUS': '#F59E0B',
         'HIGH_RISK': '#EF4444'
       };
+      const badges: Record<string, string> = {
+        'SAFE': '✓',
+        'SUSPICIOUS': '?',
+        'HIGH_RISK': '✗'
+      };
       
-      chrome.action.setBadgeBackgroundColor({ color: colors[result.risk_level], tabId: details.tabId });
-      chrome.action.setBadgeText({ text: '✓', tabId: details.tabId });
+      chrome.action.setBadgeBackgroundColor({ color: colors[result.risk_level] || '#9CA3AF', tabId: details.tabId });
+      chrome.action.setBadgeText({ text: badges[result.risk_level] || '?', tabId: details.tabId });
       
       // Tell content script if it's high risk to show interstitial
-      if (result.risk_level === 'HIGH_RISK') {
+      if (result.risk_level === 'HIGH_RISK' || result.risk_level === 'SUSPICIOUS') {
         // We wait a bit for the page to load, then send message
         setTimeout(() => {
           chrome.tabs.sendMessage(details.tabId, { type: 'SHOW_WARNING', result });

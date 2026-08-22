@@ -54,3 +54,4 @@ ml/data/raw/*
 
 # Logs
 *.log
+*.db

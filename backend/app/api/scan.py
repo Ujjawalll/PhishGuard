@@ -1,3 +1,6 @@
+import numpy as np
+from ml.fusion.strategies import OrLogicFusion
+
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -48,18 +51,32 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     scaled = explainer.scaler.transform(df_single)
     ml_prob = float(explainer.model.predict_proba(scaled)[0][1])
     
-    # 5. Fusion (Using OR Logic since it performed best)
+    # 5. Fusion (OR Logic — evaluated as best performer)
     rule_score = rule_res["normalized_score"]
+    fusion = OrLogicFusion(ml_threshold=0.5, rule_threshold=0.5)
     
-    # In a real setup we'd call fusion_strategy.predict_proba, but we can do a simple max for now
-    fused_score = max(ml_prob, rule_score)
-    risk_level = "HIGH_RISK" if fused_score >= 0.5 else "SAFE" # Simplified logic
+    fused_score = float(fusion.predict_proba(
+        np.array([ml_prob]), np.array([rule_score])
+    )[0])
     
-    # Update Rule Engine risk level if ML overrode it
-    if risk_level != rule_res["risk_level"]:
-        rule_res["user_explanation"]["risk_level"] = risk_level
-        if risk_level == "HIGH_RISK":
-            rule_res["user_explanation"]["recommendation"] = "Do not enter credentials."
+    # Three-level risk thresholds (calibrated from validation)
+    if fused_score >= 0.7:
+        risk_level = "HIGH_RISK"
+    elif fused_score >= 0.4:
+        risk_level = "SUSPICIOUS"
+    else:
+        risk_level = "SAFE"
+    
+    # Build recommendation based on risk level
+    recommendations = {
+        "HIGH_RISK": "Do not enter credentials. Leave this site.",
+        "SUSPICIOUS": "Proceed with caution. Verify the URL carefully.",
+        "SAFE": "Appears safe."
+    }
+    
+    # Override rule engine explanation with fused result
+    rule_res["user_explanation"]["risk_level"] = risk_level
+    rule_res["user_explanation"]["recommendation"] = recommendations[risk_level]
             
     shap_dict = explainer.get_shap_values(features)
     user_exp = explainer.build_user_explanation(risk_level, rule_res["triggered_rules"], shap_dict)

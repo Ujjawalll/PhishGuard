@@ -24,7 +24,8 @@ function App() {
   const login = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:8000/auth/login', {
+      const { apiUrl = 'http://localhost:8000' } = await chrome.storage.local.get(['apiUrl']);
+      const res = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
