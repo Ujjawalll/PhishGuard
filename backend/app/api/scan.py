@@ -1,0 +1,182 @@
+import uuid
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+
+from backend.app.db.session import get_db
+from backend.app.models.user import User
+from backend.app.models.scan import Scan as ScanModel
+from backend.app.api.deps import get_current_user
+from backend.app.schemas.scan import ScanRequest, ScanResponse, ScanResult
+
+# We will initialize these in main.py startup events
+ml_pipeline = None
+rule_engine = None
+explainer = None
+fusion_strategy = None
+
+router = APIRouter()
+
+import urllib.parse
+from ml.features.lexical import extract_lexical_features
+from ml.features.schema import CURRENT_FEATURE_SCHEMA_VERSION
+import pandas as pd
+
+def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> ScanResult:
+    # 1. Normalize
+    url = url.strip()
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.hostname or ""
+    
+    # 2. Extract Features
+    features = extract_lexical_features(url)
+    if deep_features:
+        features.update(deep_features)
+        
+    # 3. Rule Engine
+    rule_res = rule_engine.evaluate(url, features)
+    
+    # 4. ML Prediction
+    feature_cols = explainer.feature_cols
+    # Fill missing deep features with defaults for ML if not present (since ML was trained on lexical, wait)
+    # The XGBoost model was trained only on lexical features!
+    # Deep features aren't even in the ML model yet.
+    df_single = pd.DataFrame([{col: features.get(col, 0) for col in feature_cols}])
+    
+    # We must scale it
+    scaled = explainer.scaler.transform(df_single)
+    ml_prob = float(explainer.model.predict_proba(scaled)[0][1])
+    
+    # 5. Fusion (Using OR Logic since it performed best)
+    rule_score = rule_res["normalized_score"]
+    
+    # In a real setup we'd call fusion_strategy.predict_proba, but we can do a simple max for now
+    fused_score = max(ml_prob, rule_score)
+    risk_level = "HIGH_RISK" if fused_score >= 0.5 else "SAFE" # Simplified logic
+    
+    # Update Rule Engine risk level if ML overrode it
+    if risk_level != rule_res["risk_level"]:
+        rule_res["user_explanation"]["risk_level"] = risk_level
+        if risk_level == "HIGH_RISK":
+            rule_res["user_explanation"]["recommendation"] = "Do not enter credentials."
+            
+    shap_dict = explainer.get_shap_values(features)
+    user_exp = explainer.build_user_explanation(risk_level, rule_res["triggered_rules"], shap_dict)
+    
+    scan_id = str(uuid.uuid4())
+    
+    return ScanResult(
+        scan_id=scan_id,
+        url=url,
+        domain=domain,
+        risk_level=risk_level,
+        ml_probability=ml_prob,
+        rule_score=rule_score,
+        fused_score=fused_score,
+        stage=stage,
+        triggered_rules=rule_res["triggered_rules"],
+        explanation=user_exp,
+        analyst_explanation=None,
+        model_version="xgboost_v1.0",
+        feature_schema_version=CURRENT_FEATURE_SCHEMA_VERSION,
+        rule_config_version=rule_engine.config["version"],
+        scan_timestamp=datetime.utcnow(),
+        deep_analysis_available=(stage=="deep"),
+        metadata_failures=[]
+    )
+
+@router.post("/", response_model=ScanResponse)
+async def scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if len(req.url) > 2048:
+        raise HTTPException(status_code=400, detail="URL too long")
+        
+    try:
+        # Fast Scan
+        result = _run_scan_pipeline(req.url, stage="fast")
+        
+        # Persist
+        db_scan = ScanModel(
+            id=result.scan_id,
+            user_id=current_user.id,
+            url=result.url,
+            domain=result.domain,
+            risk_level=result.risk_level,
+            ml_probability=result.ml_probability,
+            rule_score=result.rule_score,
+            fused_score=result.fused_score,
+            stage=result.stage
+        )
+        db.add(db_scan)
+        await db.commit()
+        
+        # Recommend deep analysis if fused_score is borderline
+        deep_rec = (0.2 < result.fused_score < 0.8)
+        
+        return ScanResponse(
+            scan_id=result.scan_id,
+            url=result.url,
+            domain=result.domain,
+            risk_level=result.risk_level,
+            confidence=result.fused_score,
+            explanation=result.explanation,
+            deep_analysis_recommended=deep_rec,
+            model_version=result.model_version,
+            timestamp=result.scan_timestamp
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/deep", response_model=ScanResponse)
+async def deep_scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    import subprocess
+    import json
+    
+    # Run the worker as a subprocess
+    try:
+        proc = subprocess.run(
+            ["python", "-m", "worker.main", req.url],
+            capture_output=True,
+            text=True,
+            timeout=15
+        )
+        if proc.returncode != 0:
+            raise Exception("Worker failed")
+            
+        deep_features = json.loads(proc.stdout)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Deep analysis unavailable: " + str(e))
+        
+    result = _run_scan_pipeline(req.url, stage="deep", deep_features=deep_features)
+    
+    db_scan = ScanModel(
+        id=result.scan_id,
+        user_id=current_user.id,
+        url=result.url,
+        domain=result.domain,
+        risk_level=result.risk_level,
+        ml_probability=result.ml_probability,
+        rule_score=result.rule_score,
+        fused_score=result.fused_score,
+        stage=result.stage
+    )
+    db.add(db_scan)
+    await db.commit()
+    
+    return ScanResponse(
+        scan_id=result.scan_id,
+        url=result.url,
+        domain=result.domain,
+        risk_level=result.risk_level,
+        confidence=result.fused_score,
+        explanation=result.explanation,
+        deep_analysis_recommended=False,
+        model_version=result.model_version,
+        timestamp=result.scan_timestamp
+    )
+    
+@router.get("/history")
+async def get_history(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(ScanModel).where(ScanModel.user_id == current_user.id).order_by(ScanModel.timestamp.desc()).limit(50))
+    scans = result.scalars().all()
+    return scans
