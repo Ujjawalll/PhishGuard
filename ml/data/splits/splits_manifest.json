@@ -1,0 +1,12 @@
+{
+  "random": {
+    "train": 7189,
+    "val": 1007,
+    "test": 2088
+  },
+  "cross_dataset": {
+    "train": 7520,
+    "test": 2764
+  },
+  "temporal": "Not applicable due to lack of per-row timestamps in current snapshot."
+}
