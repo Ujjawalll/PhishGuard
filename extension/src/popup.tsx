@@ -5,6 +5,7 @@ function App() {
   const [token, setToken] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
   const [result, setResult] = useState<any>(null);
 
   useEffect(() => {
@@ -21,21 +22,29 @@ function App() {
     });
   }, []);
 
-  const login = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       const { apiUrl = 'http://localhost:8000' } = await chrome.storage.local.get(['apiUrl']);
-      const res = await fetch(`${apiUrl}/auth/login`, {
+      const endpoint = isRegister ? '/auth/register' : '/auth/login';
+      
+      const res = await fetch(`${apiUrl}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
+      
       if (res.ok) {
-        const data = await res.json();
-        setToken(data.access_token);
-        chrome.storage.local.set({ token: data.access_token });
+        if (isRegister) {
+          alert("Registered successfully! You can now log in.");
+          setIsRegister(false);
+        } else {
+          const data = await res.json();
+          setToken(data.access_token);
+          chrome.storage.local.set({ token: data.access_token });
+        }
       } else {
-        alert("Login failed");
+        alert("Authentication failed");
       }
     } catch (err) {
       alert("Cannot reach API");
@@ -50,12 +59,19 @@ function App() {
   if (!token) {
     return (
       <div style={{ padding: '20px' }}>
-        <h2>PhishGuard Login</h2>
-        <form onSubmit={login}>
+        <h2>PhishGuard {isRegister ? 'Register' : 'Login'}</h2>
+        <form onSubmit={handleAuth}>
           <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} required />
           <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{ width: '100%', marginBottom: '10px', padding: '8px' }} required />
-          <button type="submit" style={{ width: '100%', padding: '8px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: '4px' }}>Login</button>
+          <button type="submit" style={{ width: '100%', padding: '8px', background: '#3B82F6', color: 'white', border: 'none', borderRadius: '4px' }}>
+            {isRegister ? 'Register' : 'Login'}
+          </button>
         </form>
+        <p style={{ marginTop: '10px', textAlign: 'center', fontSize: '12px' }}>
+          <a href="#" onClick={() => setIsRegister(!isRegister)}>
+            {isRegister ? 'Already have an account? Login' : 'Need an account? Register'}
+          </a>
+        </p>
       </div>
     );
   }

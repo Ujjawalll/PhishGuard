@@ -75,3 +75,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     chrome.action.setBadgeText({ text: '!', tabId: details.tabId });
   }
 });
+
+// Allow content script to get its own tab ID
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === "GET_TAB_ID" && sender.tab) {
+        sendResponse({ tabId: sender.tab.id });
+    }
+    return true;
+});
