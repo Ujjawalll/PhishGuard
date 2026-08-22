@@ -5,7 +5,18 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-phishguard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-phishguard_secret}
       POSTGRES_DB: ${POSTGRES_DB:-phishguard_db}
-    volumes:
+      admin:
+    build:
+      context: .
+      dockerfile: docker/admin.Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:8000
+
+volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
@@ -20,7 +31,18 @@ services:
       context: .
       dockerfile: docker/backend.Dockerfile
     command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
+      admin:
+    build:
+      context: .
+      dockerfile: docker/admin.Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://backend:8000
+
+volumes:
       - .:/app
       
     ports:
@@ -32,8 +54,6 @@ services:
       db:
         condition: service_healthy
 
-volumes:
-  postgres_data:
   admin:
     build:
       context: .
@@ -44,3 +64,6 @@ volumes:
       - backend
     environment:
       - VITE_API_URL=http://backend:8000
+
+volumes:
+  postgres_data:
