@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from backend.app.api import auth, scan
+from backend.app.api import auth, scan, admin
 from backend.app.db.session import engine, Base
 import backend.app.api.scan as scan_module
 import os
@@ -55,6 +55,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(scan.router, prefix="/scan", tags=["scan"])
+app.include_router(admin.router, prefix="/admin", tags=["admin"])
 
 @app.get("/health")
 def health_check():

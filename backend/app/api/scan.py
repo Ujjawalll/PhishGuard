@@ -1,3 +1,6 @@
+import asyncio
+from backend.app.api.admin import manager
+
 import numpy as np
 from ml.fusion.strategies import OrLogicFusion
 
@@ -22,6 +25,7 @@ fusion_strategy = None
 router = APIRouter()
 
 import urllib.parse
+import json
 from ml.features.lexical import extract_lexical_features
 from ml.features.schema import CURRENT_FEATURE_SCHEMA_VERSION
 import pandas as pd
@@ -122,10 +126,22 @@ async def scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current
             ml_probability=result.ml_probability,
             rule_score=result.rule_score,
             fused_score=result.fused_score,
-            stage=result.stage
+            stage=result.stage,
+            triggered_rules_json=json.dumps([r if isinstance(r, dict) else r.dict() for r in result.triggered_rules]),
+            explanation_json=json.dumps(result.explanation if isinstance(result.explanation, dict) else result.explanation.dict())
         )
         db.add(db_scan)
         await db.commit()
+        asyncio.create_task(manager.broadcast({
+            "type": "new_scan",
+            "scan_id": result.scan_id,
+            "url": result.url,
+            "domain": result.domain,
+            "risk_level": result.risk_level,
+            "fused_score": result.fused_score,
+            "stage": result.stage,
+            "timestamp": result.scan_timestamp.isoformat()
+        }))
         
         # Recommend deep analysis if fused_score is borderline
         deep_rec = (0.2 < result.fused_score < 0.8)
@@ -175,7 +191,9 @@ async def deep_scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), cu
         ml_probability=result.ml_probability,
         rule_score=result.rule_score,
         fused_score=result.fused_score,
-        stage=result.stage
+        stage=result.stage,
+        triggered_rules_json=json.dumps([r if isinstance(r, dict) else r.dict() for r in result.triggered_rules]),
+        explanation_json=json.dumps(result.explanation if isinstance(result.explanation, dict) else result.explanation.dict())
     )
     db.add(db_scan)
     await db.commit()
