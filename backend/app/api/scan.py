@@ -88,6 +88,28 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     
     scan_id = str(uuid.uuid4())
     
+    print("=== BACKEND DIAGNOSTIC TRACE ===")
+    print(f"REQUEST URL: {url}")
+    print(f"NORMALIZED URL: {url}")
+    print(f"MODEL VERSION: xgboost_v1.0")
+    print(f"FEATURE SCHEMA VERSION: {CURRENT_FEATURE_SCHEMA_VERSION}")
+    print("RULES:")
+    for cat in rule_res.get("category_scores", {}):
+        print(f"{cat} = {rule_res['category_scores'][cat]}")
+    print(f"NORMALIZED RULE SCORE = {rule_score}")
+    print(f"RAW ML OUTPUT = {ml_prob}")
+    print(f"CALIBRATED ML PROBABILITY = {ml_prob}")
+    print("DEEP FEATURES:")
+    if deep_features:
+        for k, v in deep_features.items():
+            print(f"{k} = {v}")
+    else:
+        print("none")
+    print(f"FUSED SCORE = {fused_score}")
+    print(f"RISK THRESHOLD = 0.20 / 0.08")
+    print(f"FINAL RISK = {risk_level}")
+    print("================================")
+    
     return ScanResult(
         scan_id=scan_id,
         url=url,

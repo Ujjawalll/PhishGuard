@@ -4,9 +4,17 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   const url = details.url;
   if (!url.startsWith('http')) return;
   
+  const scanId = crypto.randomUUID();
+
+  // Step 1: Invalidate stale result for this tab
+  await chrome.storage.local.remove(`result_${details.tabId}`);
+  
   // Set badge to loading
   chrome.action.setBadgeBackgroundColor({ color: '#FCD34D', tabId: details.tabId });
   chrome.action.setBadgeText({ text: '...', tabId: details.tabId });
+  
+  // Tell content script to clear any remaining warnings
+  chrome.tabs.sendMessage(details.tabId, { type: 'CLEAR_WARNING' }).catch(() => {});
 
   try {
     const { token, apiUrl = 'http://localhost:8000' } = await chrome.storage.local.get(['token', 'apiUrl']);
@@ -21,62 +29,74 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       body: JSON.stringify({ url })
     });
     
+    let result: any = { risk_level: 'ANALYSIS_UNAVAILABLE', scanned_url: url, scan_id: scanId, scan_stage: 'FAST' };
+    
     if (response.ok) {
-      const result = await response.json();
+      result = await response.json();
+    }
+    
+    result.scanned_url = url;
+    result.scan_id = scanId;
+    result.scan_stage = 'FAST';
+    
+    // Update badge
+    const colors: Record<string, string> = {
+      'LOW_RISK': '#10B981',
+      'SUSPICIOUS': '#F59E0B',
+      'HIGH_RISK': '#EF4444',
+      'ANALYSIS_UNAVAILABLE': '#9CA3AF'
+    };
+    const badges: Record<string, string> = {
+      'LOW_RISK': '✓',
+      'SUSPICIOUS': '?',
+      'HIGH_RISK': '✗',
+      'ANALYSIS_UNAVAILABLE': '!'
+    };
+    
+    chrome.action.setBadgeBackgroundColor({ color: colors[result.risk_level] || '#9CA3AF', tabId: details.tabId });
+    chrome.action.setBadgeText({ text: badges[result.risk_level] || '!', tabId: details.tabId });
+    
+    // Save result
+    await chrome.storage.local.set({ [`result_${details.tabId}`]: result });
+    
+    // Send to content script
+    chrome.tabs.sendMessage(details.tabId, { type: 'UPDATE_WARNING', result }).catch(() => {});
+    
+    // Trigger deep scan if recommended
+    if (result.deep_analysis_recommended && result.risk_level !== 'ANALYSIS_UNAVAILABLE') {
+      chrome.action.setBadgeText({ text: '↻', tabId: details.tabId });
       
-      // Update badge
-      const colors: Record<string, string> = {
-        'SAFE': '#10B981',
-        'SUSPICIOUS': '#F59E0B',
-        'HIGH_RISK': '#EF4444'
-      };
-      const badges: Record<string, string> = {
-        'SAFE': '✓',
-        'SUSPICIOUS': '?',
-        'HIGH_RISK': '✗'
-      };
+      const res = await fetch(`${apiUrl}/scan/deep`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ url })
+      }).catch(() => null);
       
-      chrome.action.setBadgeBackgroundColor({ color: colors[result.risk_level] || '#9CA3AF', tabId: details.tabId });
-      chrome.action.setBadgeText({ text: badges[result.risk_level] || '?', tabId: details.tabId });
-      
-      // Tell content script if it's high risk to show interstitial
-      if (result.risk_level === 'HIGH_RISK' || result.risk_level === 'SUSPICIOUS') {
-        // We wait a bit for the page to load, then send message
-        setTimeout(() => {
-          chrome.tabs.sendMessage(details.tabId, { type: 'SHOW_WARNING', result });
-        }, 1500);
-      }
-      
-      // Save result for popup
-      chrome.storage.local.set({ [`result_${details.tabId}`]: result });
-      
-      // Trigger deep scan if recommended
-      if (result.deep_analysis_recommended) {
-        chrome.action.setBadgeText({ text: '↻', tabId: details.tabId });
-        fetch(`${apiUrl}/scan/deep`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ url })
-        }).then(async res => {
-          if (res.ok) {
-            const deepRes = await res.json();
-            chrome.action.setBadgeBackgroundColor({ color: colors[deepRes.risk_level], tabId: details.tabId });
-            chrome.action.setBadgeText({ text: '✓', tabId: details.tabId });
-            chrome.storage.local.set({ [`result_${details.tabId}`]: deepRes });
-          }
-        });
+      if (res && res.ok) {
+        const deepRes = await res.json();
+        deepRes.scanned_url = url;
+        deepRes.scan_id = scanId;
+        deepRes.scan_stage = 'DEEP';
+        
+        chrome.action.setBadgeBackgroundColor({ color: colors[deepRes.risk_level] || '#9CA3AF', tabId: details.tabId });
+        chrome.action.setBadgeText({ text: badges[deepRes.risk_level] || '✓', tabId: details.tabId });
+        await chrome.storage.local.set({ [`result_${details.tabId}`]: deepRes });
+        chrome.tabs.sendMessage(details.tabId, { type: 'UPDATE_WARNING', result: deepRes }).catch(() => {});
       }
     }
   } catch (err) {
     chrome.action.setBadgeBackgroundColor({ color: '#9CA3AF', tabId: details.tabId });
     chrome.action.setBadgeText({ text: '!', tabId: details.tabId });
+    
+    const errResult = { risk_level: 'ANALYSIS_UNAVAILABLE', scanned_url: url, scan_id: scanId, scan_stage: 'FAST' };
+    await chrome.storage.local.set({ [`result_${details.tabId}`]: errResult });
+    chrome.tabs.sendMessage(details.tabId, { type: 'UPDATE_WARNING', result: errResult }).catch(() => {});
   }
 });
 
-// Allow content script to get its own tab ID
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "GET_TAB_ID" && sender.tab) {
         sendResponse({ tabId: sender.tab.id });

@@ -103,6 +103,12 @@
       "category": "CONTENT",
       "weight": 15.0,
       "description": "Page contains multiple suspicious keywords (e.g., login, verify, account)."
+    },
+    {
+      "rule_id": "R_CROSS_DOMAIN_FORM",
+      "category": "BEHAVIOR",
+      "weight": 25.0,
+      "description": "Form submits to a different domain (often used to steal credentials)."
     }
   ],
   "max_possible_score": 100.0,

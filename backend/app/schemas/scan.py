@@ -11,7 +11,7 @@ class RuleResult(BaseModel):
     evidence: str
 
 class UserExplanation(BaseModel):
-    risk_level: Literal["SAFE", "SUSPICIOUS", "HIGH_RISK", "ANALYSIS_UNAVAILABLE", "LOW_RISK"]
+    risk_level: Literal["LOW_RISK", "SUSPICIOUS", "HIGH_RISK", "ANALYSIS_UNAVAILABLE"]
     top_reasons: list[str]
     recommendation: str
 
@@ -27,7 +27,7 @@ class ScanResult(BaseModel):
     scan_id: str
     url: str
     domain: str
-    risk_level: Literal["SAFE", "SUSPICIOUS", "HIGH_RISK", "ANALYSIS_UNAVAILABLE", "LOW_RISK"]
+    risk_level: Literal["LOW_RISK", "SUSPICIOUS", "HIGH_RISK", "ANALYSIS_UNAVAILABLE"]
     ml_probability: float
     rule_score: float
     fused_score: float
@@ -49,7 +49,7 @@ class ScanResponse(BaseModel):
     scan_id: str
     url: str
     domain: str
-    risk_level: Literal["SAFE", "SUSPICIOUS", "HIGH_RISK", "ANALYSIS_UNAVAILABLE", "LOW_RISK"]
+    risk_level: Literal["LOW_RISK", "SUSPICIOUS", "HIGH_RISK", "ANALYSIS_UNAVAILABLE"]
     confidence: float
     explanation: UserExplanation
     deep_analysis_recommended: bool

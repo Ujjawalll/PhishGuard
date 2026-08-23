@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
         pipeline = joblib.load(os.path.join(latest_path, "model.joblib"))
         
         import json
+        from ml.features.schema import CURRENT_FEATURE_SCHEMA_VERSION
         with open(os.path.join(latest_path, "metadata.json")) as f:
             metadata = json.load(f)
             feature_cols = metadata["features"]
@@ -30,9 +31,18 @@ async def lifespan(app: FastAPI):
         scan_module.ml_pipeline = pipeline
         scan_module.rule_engine = RuleEngine()
         scan_module.explainer = Explainer(pipeline, feature_cols)
-        print("Models loaded successfully.")
+        
+        print("=== MODEL LOADING VERIFICATION ===")
+        print(f"MODEL_PATH: {latest_path}")
+        print(f"MODEL_TYPE: XGBoost (Calibrated)")
+        print(f"MODEL_VERSION: {metadata.get('model_version', '1.0')}")
+        print(f"FEATURE_SCHEMA_VERSION: {CURRENT_FEATURE_SCHEMA_VERSION}")
+        print(f"MODEL_ARTIFACT_TIMESTAMP: {metadata.get('training_timestamp', 'Unknown')}")
+        print("==================================")
+        
     except Exception as e:
         print("Failed to load models:", e)
+        scan_module.ml_pipeline = None # Force ANALYSIS_UNAVAILABLE
         
     yield
     # Shutdown

@@ -12,7 +12,8 @@ def extract_html(html: str, base_url: str) -> dict:
         "external_link_ratio": 0.0,
         "has_redirect": 0,
         "title_length": 0,
-        "suspicious_text_count": 0
+        "suspicious_text_count": 0,
+        "cross_domain_form": 0
     }
     
     if not html:
@@ -26,6 +27,18 @@ def extract_html(html: str, base_url: str) -> dict:
         result["password_input_count"] = len(soup.find_all('input', type='password'))
         result["script_count"] = len(soup.find_all('script'))
         result["iframe_count"] = len(soup.find_all('iframe'))
+        
+        parsed_base = urllib.parse.urlparse(base_url)
+        
+        # Cross-domain form action
+        result["cross_domain_form"] = 0
+        for form in soup.find_all('form'):
+            action = form.get('action')
+            if action and action.startswith('http'):
+                parsed_action = urllib.parse.urlparse(action)
+                if parsed_action.netloc and parsed_action.netloc != parsed_base.netloc:
+                    result["cross_domain_form"] = 1
+                    break
         
         if soup.title and soup.title.string:
             result["title_length"] = len(soup.title.string)

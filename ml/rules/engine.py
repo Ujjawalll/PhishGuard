@@ -94,6 +94,9 @@ class RuleEngine:
         # The worker sets 'suspicious_text_count'
         if features.get("suspicious_text_count", 0) > 3:
             triggered_rules.append(self._build_result("R_SUSPICIOUS_CONTENT", evidence=f"Found {features['suspicious_text_count']} suspicious words in HTML"))
+            
+        if features.get("cross_domain_form", 0) == 1:
+            triggered_rules.append(self._build_result("R_CROSS_DOMAIN_FORM", evidence="Form submits to different domain"))
 
         # Calculate scores per category with caps
         category_scores = {cat: 0.0 for cat in self.categories}
