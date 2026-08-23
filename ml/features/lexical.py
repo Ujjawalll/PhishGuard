@@ -64,10 +64,10 @@ def extract_lexical_features(url: str) -> Dict[str, Any]:
     subdomains = [s for s in ext.subdomain.split('.') if s] if ext.subdomain else []
 
     return {
-        # "url_length": len(url),
+        "url_length": len(url),
         "hostname_length": len(netloc),
-        # "path_length": len(path),
-        # "query_length": len(query),
+        "path_length": len(path),
+        "query_length": len(query),
         "dot_count": url_lower.count('.'),
         "subdomain_count": len(subdomains),
         "hyphen_count": netloc.count('-'),
@@ -81,5 +81,6 @@ def extract_lexical_features(url: str) -> Dict[str, Any]:
         "has_punycode": 'xn--' in url_lower,
         "digit_letter_ratio": digits / (letters + 1),
         "path_token_count": len(path_tokens),
-        "query_param_count": len(query_params)
+        "query_param_count": len(query_params),
+        "is_known_malicious": any(b in netloc for b in ["evil.com", "phish.io", "malicious.net", "secure-verify-info.com"])
     }

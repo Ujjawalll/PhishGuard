@@ -41,7 +41,9 @@ def augment_legit_url(url: str) -> str:
     ]
     queries = [
         "", "?q=test", "?id=123", "?ref=twitter", "?page=2", "?lang=en",
-        "?token=abcxyz123", "?utm_source=newsletter&utm_medium=email"
+        "?token=abcxyz123", "?utm_source=newsletter&utm_medium=email",
+        "?redirect_url=https%3A%2F%2Fexample.com%2Fdashboard&session_id=abcdef1234567890abcdef1234567890",
+        "?action=verify&token=abcxyz123abcxyz123abcxyz123abcxyz123abcxyz123abcxyz123abcxyz123abcxyz123"
     ]
     
     path = random.choice(paths)

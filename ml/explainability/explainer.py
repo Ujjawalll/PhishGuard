@@ -13,7 +13,14 @@ class Explainer:
         self.feature_cols = feature_cols
         
         # We need the underlying Tree model to use TreeExplainer
-        self.model = self.pipeline.named_steps['classifier']
+        classifier = self.pipeline.named_steps['classifier']
+        
+        if hasattr(classifier, 'calibrated_classifiers_'):
+            # Grab the first fitted estimator from CV
+            self.model = classifier.calibrated_classifiers_[0].estimator
+        else:
+            self.model = classifier
+            
         self.scaler = self.pipeline.named_steps['scaler']
         
         # Initialize SHAP explainer
@@ -102,7 +109,7 @@ class Explainer:
         if not top_reasons:
             top_reasons.append("No suspicious indicators were detected.")
             
-        recommendation = "Proceed with caution." if risk_level == "SUSPICIOUS" else "Do not enter credentials." if risk_level == "HIGH_RISK" else "Appears safe."
+        recommendation = "Proceed with caution." if risk_level == "SUSPICIOUS" else "Do not enter credentials." if risk_level == "HIGH_RISK" else "Little evidence of phishing, but always verify."
         
         return {
             "risk_level": risk_level,

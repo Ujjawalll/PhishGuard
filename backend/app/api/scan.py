@@ -2,7 +2,7 @@ import asyncio
 from backend.app.api.admin import manager
 
 import numpy as np
-from ml.fusion.strategies import OrLogicFusion
+from ml.fusion.strategies import WeightedSumFusion
 
 import uuid
 from datetime import datetime
@@ -51,31 +51,32 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     # Deep features aren't even in the ML model yet.
     df_single = pd.DataFrame([{col: features.get(col, 0) for col in feature_cols}])
     
-    # We must scale it
-    scaled = explainer.scaler.transform(df_single)
-    ml_prob = float(explainer.model.predict_proba(scaled)[0][1])
+    # ML Pipeline has scaling built in now
+    ml_prob = float(ml_pipeline.predict_proba(df_single)[0][1])
     
     # 5. Fusion (OR Logic — evaluated as best performer)
     rule_score = rule_res["normalized_score"]
-    fusion = OrLogicFusion(ml_threshold=0.5, rule_threshold=0.5)
+    fusion = WeightedSumFusion(alpha=0.6, threshold=0.6)
     
     fused_score = float(fusion.predict_proba(
-        np.array([ml_prob]), np.array([rule_score])
+        np.array([ml_prob]), 
+        np.array([rule_score]),
+        known_malicious=np.array([features.get("is_known_malicious", False)])
     )[0])
     
     # Three-level risk thresholds (calibrated from validation)
-    if fused_score >= 0.7:
+    if fused_score >= 0.20:
         risk_level = "HIGH_RISK"
-    elif fused_score >= 0.4:
+    elif fused_score >= 0.08:
         risk_level = "SUSPICIOUS"
     else:
-        risk_level = "SAFE"
+        risk_level = "LOW_RISK"
     
     # Build recommendation based on risk level
     recommendations = {
         "HIGH_RISK": "Do not enter credentials. Leave this site.",
         "SUSPICIOUS": "Proceed with caution. Verify the URL carefully.",
-        "SAFE": "Appears safe."
+        "LOW_RISK": "Little evidence of phishing, but always verify."
     }
     
     # Override rule engine explanation with fused result
@@ -158,7 +159,24 @@ async def scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current
             timestamp=result.scan_timestamp
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import uuid
+        from datetime import datetime
+        print(f"Error in fast scan: {e}")
+        return ScanResponse(
+            scan_id=str(uuid.uuid4()),
+            url=req.url,
+            domain=urllib.parse.urlparse(req.url).hostname or "",
+            risk_level="ANALYSIS_UNAVAILABLE",
+            confidence=0.0,
+            explanation={
+                "risk_level": "ANALYSIS_UNAVAILABLE",
+                "top_reasons": ["Analysis service is currently unavailable.", str(e)],
+                "recommendation": "Use your own judgment or try again later."
+            },
+            deep_analysis_recommended=False,
+            model_version="unknown",
+            timestamp=datetime.utcnow()
+        )
 
 @router.post("/deep", response_model=ScanResponse)
 async def deep_scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):

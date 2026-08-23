@@ -1,59 +1,110 @@
 {
+  "categories": {
+    "URL_STRUCTURE": {"max": 25},
+    "DOMAIN": {"max": 30},
+    "REPUTATION": {"max": 40},
+    "SECURITY": {"max": 20},
+    "CONTENT": {"max": 40},
+    "BEHAVIOR": {"max": 30}
+  },
   "rules": [
     {
       "rule_id": "R_IP_HOST",
-      "weight": 3.0,
-      "severity": "High",
+      "category": "URL_STRUCTURE",
+      "weight": 20.0,
       "description": "IP address used as hostname instead of a domain name."
     },
     {
       "rule_id": "R_AT_SYMBOL",
-      "weight": 2.5,
-      "severity": "Medium",
+      "category": "URL_STRUCTURE",
+      "weight": 20.0,
       "description": "URL contains an '@' symbol, which can hide the actual destination."
     },
     {
       "rule_id": "R_BRAND_TOKEN",
-      "weight": 2.0,
-      "severity": "High",
+      "category": "URL_STRUCTURE",
+      "weight": 3.0,
       "description": "URL contains suspicious tokens often used in phishing (e.g., login, secure)."
     },
     {
       "rule_id": "R_LONG_URL",
-      "weight": 1.0,
-      "severity": "Low",
-      "description": "URL is unusually long (over 75 characters)."
+      "category": "URL_STRUCTURE",
+      "weight": 3.0,
+      "description": "URL is unusually long (over 100 characters)."
     },
     {
       "rule_id": "R_DEEP_SUBDOMAINS",
-      "weight": 1.5,
-      "severity": "Medium",
+      "category": "URL_STRUCTURE",
+      "weight": 7.0,
       "description": "URL has an excessive number of subdomains (> 3)."
     },
     {
       "rule_id": "R_SUSPICIOUS_TLD",
-      "weight": 1.5,
-      "severity": "Medium",
+      "category": "DOMAIN",
+      "weight": 7.0,
       "description": "Domain uses a high-risk Top-Level Domain (e.g., .tk, .ml)."
     },
     {
+      "rule_id": "R_PUNYCODE",
+      "category": "DOMAIN",
+      "weight": 15.0,
+      "description": "URL hostname contains Punycode/IDN, often used for homoglyph attacks."
+    },
+    {
       "rule_id": "R_NO_HTTPS",
-      "weight": 1.0,
-      "severity": "Low",
+      "category": "SECURITY",
+      "weight": 5.0,
       "description": "URL uses HTTP instead of secure HTTPS."
     },
     {
-      "rule_id": "R_PUNYCODE",
-      "weight": 2.0,
-      "severity": "Medium",
-      "description": "URL hostname contains Punycode/IDN, often used for homoglyph attacks."
+      "rule_id": "R_DOMAIN_AGE",
+      "category": "REPUTATION",
+      "weight": 20.0,
+      "description": "Domain is very new (less than 30 days old)."
+    },
+    {
+      "rule_id": "R_WHOIS_PRIVACY",
+      "category": "REPUTATION",
+      "weight": 10.0,
+      "description": "WHOIS privacy protection is enabled."
+    },
+    {
+      "rule_id": "R_CERT_INVALID",
+      "category": "SECURITY",
+      "weight": 20.0,
+      "description": "TLS certificate is invalid or expired."
+    },
+    {
+      "rule_id": "R_CERT_MISMATCH",
+      "category": "SECURITY",
+      "weight": 20.0,
+      "description": "TLS certificate hostname does not match the URL."
+    },
+    {
+      "rule_id": "R_PASSWORD_INPUT",
+      "category": "BEHAVIOR",
+      "weight": 15.0,
+      "description": "Page contains a password input field."
+    },
+    {
+      "rule_id": "R_EXTERNAL_LINKS",
+      "category": "BEHAVIOR",
+      "weight": 15.0,
+      "description": "High ratio of external links (> 80%)."
+    },
+    {
+      "rule_id": "R_META_REDIRECT",
+      "category": "BEHAVIOR",
+      "weight": 15.0,
+      "description": "Page contains a meta refresh redirect."
+    },
+    {
+      "rule_id": "R_SUSPICIOUS_CONTENT",
+      "category": "CONTENT",
+      "weight": 15.0,
+      "description": "Page contains multiple suspicious keywords (e.g., login, verify, account)."
     }
   ],
-  "thresholds": {
-    "safe_max": 1.9,
-    "suspicious_max": 4.9,
-    "high_risk_min": 5.0
-  },
-  "max_possible_score": 14.5,
-  "version": "1.0"
+  "max_possible_score": 100.0,
+  "version": "3.0"
 }

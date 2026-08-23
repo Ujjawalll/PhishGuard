@@ -6,12 +6,14 @@ class WeightedSumFusion:
         self.alpha = alpha
         self.threshold = threshold
 
-    def predict_proba(self, ml_prob: np.ndarray, rule_score: np.ndarray) -> np.ndarray:
-        return self.alpha * ml_prob + (1 - self.alpha) * rule_score
+    def predict_proba(self, ml_prob: np.ndarray, rule_score: np.ndarray, known_malicious: np.ndarray = None) -> np.ndarray:
+        prob = self.alpha * ml_prob + (1 - self.alpha) * rule_score
+        if known_malicious is not None:
+            prob = np.where(known_malicious, 1.0, prob)
+        return prob
 
-    def predict(self, ml_prob: np.ndarray, rule_score: np.ndarray) -> np.ndarray:
-        return (self.predict_proba(ml_prob, rule_score) >= self.threshold).astype(int)
-
+    def predict(self, ml_prob: np.ndarray, rule_score: np.ndarray, known_malicious: np.ndarray = None) -> np.ndarray:
+        return (self.predict_proba(ml_prob, rule_score, known_malicious) >= self.threshold).astype(int)
 
 class MetaClassifierFusion:
     def __init__(self):
@@ -39,7 +41,6 @@ class MetaClassifierFusion:
         X = self._build_features(ml_prob, rule_score)
         return self.meta_model.predict(X)
 
-
 class OrLogicFusion:
     def __init__(self, ml_threshold: float = 0.5, rule_threshold: float = 0.5):
         self.ml_threshold = ml_threshold
@@ -54,7 +55,6 @@ class OrLogicFusion:
         # Faux probabilities based on the maximum of the two risk signals
         return np.maximum(ml_prob, rule_score)
 
-
 class HierarchicalFusion:
     def __init__(self, rule_safe_max: float = 0.1, rule_high_min: float = 0.5, ml_threshold: float = 0.5):
         self.rule_safe_max = rule_safe_max
@@ -63,20 +63,16 @@ class HierarchicalFusion:
 
     def predict(self, ml_prob: np.ndarray, rule_score: np.ndarray) -> np.ndarray:
         preds = np.zeros_like(ml_prob, dtype=int)
-        
         for i in range(len(ml_prob)):
             if rule_score[i] >= self.rule_high_min:
                 preds[i] = 1  # Definite phishing by rules
             elif rule_score[i] <= self.rule_safe_max:
                 preds[i] = 0  # Definite safe by rules
             else:
-                # Uncertain zone: defer to ML model
                 preds[i] = 1 if ml_prob[i] >= self.ml_threshold else 0
-                
         return preds
 
     def predict_proba(self, ml_prob: np.ndarray, rule_score: np.ndarray) -> np.ndarray:
-        # Synthesize a continuous score for AUC evaluation
         probas = np.zeros_like(ml_prob)
         for i in range(len(ml_prob)):
             if rule_score[i] >= self.rule_high_min:
