@@ -14,9 +14,14 @@ golden_data = [
     # but we can mock deep features for a phishing URL
 ]
 
+def get_latest_model():
+    import json
+    with open("configs/production.json") as f:
+        config = json.load(f)
+    return config["model"]["artifact_path"]
+
 def main():
-    paths = glob("ml/models/xgboost_*")
-    latest_path = sorted(paths)[-1]
+    latest_path = get_latest_model()
     pipeline = joblib.load(latest_path + "/model.joblib")
     
     with open(latest_path + "/metadata.json", "r") as f:

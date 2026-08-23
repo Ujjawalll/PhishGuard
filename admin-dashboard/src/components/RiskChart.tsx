@@ -1,7 +1,7 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-const COLORS = { SAFE: '#10b981', SUSPICIOUS: '#f59e0b', HIGH_RISK: '#ef4444' };
+const COLORS = { LOW_RISK: '#10b981', SUSPICIOUS: '#f59e0b', HIGH_RISK: '#ef4444' };
 
 export default function RiskChart({ stats }: { stats: any }) {
   if (!stats?.risk_distribution) return null;

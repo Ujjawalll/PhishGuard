@@ -71,9 +71,11 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     assert 0 <= rule_score <= 1.0, "Rule score out of bounds"
     assert 0 <= fused_score <= 1.0, "Fused score out of bounds"
     
-    # Three-level risk thresholds
-    t_low = prod_config["risk_thresholds"]["low_to_suspicious"] if prod_config else 0.08
-    t_high = prod_config["risk_thresholds"]["suspicious_to_high"] if prod_config else 0.20
+    if not prod_config:
+        raise RuntimeError("Production configuration is missing or invalid")
+        
+    t_low = prod_config["risk_thresholds"]["low_to_suspicious"]
+    t_high = prod_config["risk_thresholds"]["suspicious_to_high"]
     
     if fused_score >= t_high:
         risk_level = "HIGH_RISK"
@@ -98,10 +100,12 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     
     scan_id = str(uuid.uuid4())
     
+    model_version = prod_config["model"]["production_model"] if prod_config else "unknown"
+    
     print("=== BACKEND DIAGNOSTIC TRACE ===")
     print(f"REQUEST URL: {url}")
     print(f"NORMALIZED URL: {url}")
-    print(f"MODEL VERSION: xgboost_v1.0")
+    print(f"MODEL VERSION: {model_version}")
     print(f"FEATURE SCHEMA VERSION: {CURRENT_FEATURE_SCHEMA_VERSION}")
     print("RULES:")
     for cat in rule_res.get("category_scores", {}):
@@ -120,8 +124,6 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     print(f"T_HIGH = {t_high}")
     print(f"FINAL RISK = {risk_level}")
     print("================================")
-    
-    model_version = prod_config["model"]["production_model"] if prod_config else "unknown"
     
     return ScanResult(
         scan_id=scan_id,

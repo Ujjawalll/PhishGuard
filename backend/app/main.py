@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
         scan_module.prod_config = prod_config
         
         print("=== MODEL LOADING VERIFICATION ===")
-        print(f"MODEL_PATH: {latest_path}")
+        print(f"MODEL_ARTIFACT: {latest_path}")
         print(f"MODEL_TYPE: XGBoost (Calibrated)")
         print(f"MODEL_VERSION: {metadata.get('model_version', '1.0')}")
         print(f"FEATURE_SCHEMA_VERSION: {CURRENT_FEATURE_SCHEMA_VERSION}")

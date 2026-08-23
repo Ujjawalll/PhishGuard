@@ -11,8 +11,10 @@ from ml.rules.engine import RuleEngine
 from ml.fusion.strategies import WeightedSumFusion
 
 def get_latest_model():
-    paths = glob("ml/models/xgboost_*")
-    return sorted(paths)[-1]
+    import json
+    with open("configs/production.json") as f:
+        config = json.load(f)
+    return config["model"]["artifact_path"]
 
 def evaluate(y_true, y_pred, y_prob, latencies):
     cm = confusion_matrix(y_true, y_pred)
