@@ -1,0 +1,17 @@
+{
+  "model": {
+    "production_model": "xgboost_v1.0_20260823T174748",
+    "artifact_path": "ml/models/xgboost_v1.0_20260823T174748",
+    "feature_schema_version": "v1.0",
+    "model_type": "xgboost"
+  },
+  "fusion": {
+    "strategy": "weighted_sum",
+    "ml_weight": 0.6,
+    "rule_weight": 0.4
+  },
+  "risk_thresholds": {
+    "low_to_suspicious": 0.10,
+    "suspicious_to_high": 0.25
+  }
+}

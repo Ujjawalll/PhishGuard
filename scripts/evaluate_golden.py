@@ -1,65 +1,87 @@
 import pandas as pd
-import json
+import numpy as np
+import os
 import joblib
-from glob import glob
+import json
 from ml.rules.engine import RuleEngine
-from ml.explainability.explainer import Explainer
 from ml.fusion.strategies import WeightedSumFusion
 from ml.features.lexical import extract_lexical_features
 
-golden_data = [
-    {"url": "https://www.google.com/search?q=test&hl=en", "label": 0},
-    {"url": "https://github.com/login?return_to=https%3A%2F%2Fgithub.com%2Fdashboard", "label": 0},
-    {"url": "https://secure.bankofamerica.com/login/sign-in/signOnV2Screen.go", "label": 0},
-    {"url": "http://192.168.1.1/admin/login.php", "label": 1},
-    {"url": "https://paypal-update-account.secure-verify-info.com/login", "label": 1},
-    {"url": "https://xn--80ak6aa92e.com/secure", "label": 1} # apple.com in punycode
-]
-
 def main():
-    paths = glob("ml/models/xgboost_*")
-    latest_path = sorted(paths)[-1]
-    pipeline = joblib.load(latest_path + "/model.joblib")
+    print("Loading production config...")
+    with open("configs/production.json") as f:
+        config = json.load(f)
+        
+    xgb_path = config["model"]["artifact_path"]
+    t_low = config["risk_thresholds"]["low_to_suspicious"]
+    t_high = config["risk_thresholds"]["suspicious_to_high"]
+    alpha = config["fusion"]["ml_weight"]
     
-    with open(latest_path + "/metadata.json", "r") as f:
+    with open(os.path.join(xgb_path, "metadata.json")) as f:
         feature_cols = json.load(f)["features"]
         
+    print(f"Loaded ML model from: {xgb_path}")
+    ml_model = joblib.load(os.path.join(xgb_path, "model.joblib"))
     rule_engine = RuleEngine()
-    fusion = WeightedSumFusion(alpha=0.6, threshold=0.6)
+    fusion = WeightedSumFusion(alpha=alpha, threshold=t_high)
+    
+    # Golden dataset URLs
+    golden_urls = [
+        {"url": "https://github.com", "label": 0},
+        {"url": "https://github.com/login", "label": 0},
+        {"url": "https://google.com", "label": 0},
+        {"url": "https://youtube.com", "label": 0},
+        {"url": "https://wikipedia.org", "label": 0},
+        {"url": "https://chase.com/secure/login", "label": 0},
+        {"url": "https://mit.edu", "label": 0},
+        {"url": "https://a-very-long-and-hyphenated-but-safe-domain-name.com/some/query?q=123", "label": 0},
+        {"url": "http://sub1.sub2.sub3.legit.com", "label": 0},
+        {"url": "http://secure-login-verify-account.bad-phishing-site.xyz/login.php", "label": 1},
+        {"url": "http://192.168.1.1/admin", "label": 1},
+    ]
     
     results = []
-    for item in golden_data:
+    
+    print("Evaluating Golden Dataset...")
+    for item in golden_urls:
         url = item["url"]
+        label = item["label"]
         features = extract_lexical_features(url)
-        rule_res = rule_engine.evaluate(url, features)
         
+        # Rule prediction
+        res = rule_engine.evaluate(url, features)
+        rule_score = res["normalized_score"]
+        
+        # ML prediction
         df_single = pd.DataFrame([{col: features.get(col, 0) for col in feature_cols}])
-        ml_prob = pipeline.predict_proba(df_single)[0][1]
+        ml_prob = ml_model.predict_proba(df_single)[0][1]
         
-        fused_score = fusion.predict_proba(
-            __import__('numpy').array([ml_prob]), 
-            __import__('numpy').array([rule_res["normalized_score"]]),
-            known_malicious=__import__('numpy').array([features.get("is_known_malicious", False)])
-        )[0]
+        # Fusion prediction
+        fused_score = float(fusion.predict_proba(np.array([ml_prob]), np.array([rule_score]))[0])
         
-        if fused_score >= 0.20:
-            risk = "HIGH_RISK"
-        elif fused_score >= 0.08:
-            risk = "SUSPICIOUS"
+        if fused_score >= t_high:
+            final_class = "HIGH_RISK"
+        elif fused_score >= t_low:
+            final_class = "SUSPICIOUS"
         else:
-            risk = "LOW_RISK"
+            final_class = "LOW_RISK"
             
         results.append({
             "url": url,
-            "label": item["label"],
-            "features": features,
-            "rule_score": rule_res["normalized_score"],
+            "label": label,
+            "rule_score": rule_score,
             "ml_probability": ml_prob,
             "fused_score": fused_score,
-            "risk": risk
+            "final_class": final_class
         })
         
-    print(json.dumps(results, indent=2))
+    report_df = pd.DataFrame(results)
+    print("\n=== Golden Dataset Report ===")
+    print(report_df.to_string())
+    
+    os.makedirs("experiments/reports", exist_ok=True)
+    report_df.to_csv("experiments/reports/golden_evaluation.csv", index=False)
+    print("\nSaved to experiments/reports/golden_evaluation.csv")
 
 if __name__ == "__main__":
     main()

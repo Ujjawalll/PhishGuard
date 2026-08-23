@@ -6,11 +6,14 @@ function clearWarning() {
 function normalizeUrl(url: string) {
   try {
     const u = new URL(url);
-    return u.origin + u.pathname + u.search; // ignore hash for matching
+    return u.origin + u.pathname + u.search;
   } catch {
     return url;
   }
 }
+
+let currentStage = 'NONE';
+let currentScanId = '';
 
 function renderWarning(result: any) {
   clearWarning(); // ensure previous is cleared
@@ -18,15 +21,28 @@ function renderWarning(result: any) {
   console.log(`[PhishGuard UI]
 CURRENT_URL=${window.location.href}
 RESULT_URL=${result.scanned_url}
-RISK=${result.risk_level}
-SCORE=${result.fused_score || result.normalized_score || 'N/A'}
+SCAN_ID=${result.scan_id}
+ACTIVE_SCAN_ID=${currentScanId}
 SCAN_STAGE=${result.scan_stage}
-SCAN_ID=${result.scan_id}`);
+RISK=${result.risk_level}
+FUSED_SCORE=${result.fused_score || result.normalized_score || 'N/A'}`);
 
   if (result.risk_level === 'LOW_RISK') return;
   if (result.risk_level === 'ANALYSIS_UNAVAILABLE') {
-    // Spec: "Show neutral technical message. Never show a red phishing warning merely because analysis failed."
-    // We could show a small toast, but for now we simply don't block the page.
+    // Show unavailable state
+    const toast = document.createElement('div');
+    toast.id = 'pg-warning-overlay';
+    toast.style.position = 'fixed';
+    toast.style.bottom = '10px';
+    toast.style.right = '10px';
+    toast.style.padding = '1rem';
+    toast.style.backgroundColor = '#374151';
+    toast.style.color = 'white';
+    toast.style.zIndex = '2147483647';
+    toast.innerText = 'PhishGuard Analysis Unavailable';
+    
+    if (document.body) document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 5000);
     return;
   }
 
@@ -84,7 +100,20 @@ function processResult(result: any) {
         return; // Mismatch, ignore
     }
     
-    if (result.risk_level === 'LOW_RISK' || result.risk_level === 'ANALYSIS_UNAVAILABLE') {
+    // Prevent old fast scans from overwriting deep scans of the same ID
+    if (result.scan_id === currentScanId && currentStage === 'DEEP' && result.scan_stage === 'FAST') {
+        return; 
+    }
+    
+    // If it's a completely new scan ID, reset
+    if (result.scan_id !== currentScanId) {
+        currentScanId = result.scan_id;
+        currentStage = 'NONE';
+    }
+    
+    currentStage = result.scan_stage;
+    
+    if (result.risk_level === 'LOW_RISK') {
         clearWarning();
     } else {
         renderWarning(result);

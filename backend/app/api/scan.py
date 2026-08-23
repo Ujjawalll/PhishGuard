@@ -20,7 +20,7 @@ from backend.app.schemas.scan import ScanRequest, ScanResponse, ScanResult
 ml_pipeline = None
 rule_engine = None
 explainer = None
-fusion_strategy = None
+prod_config = None
 
 router = APIRouter()
 
@@ -56,7 +56,9 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     
     # 5. Fusion (OR Logic — evaluated as best performer)
     rule_score = rule_res["normalized_score"]
-    fusion = WeightedSumFusion(alpha=0.6, threshold=0.6)
+    
+    alpha = prod_config["fusion"]["ml_weight"] if prod_config else 0.6
+    fusion = WeightedSumFusion(alpha=alpha, threshold=0.5) # Threshold inside fusion is for legacy predict(), predict_proba ignores it
     
     fused_score = float(fusion.predict_proba(
         np.array([ml_prob]), 
@@ -64,10 +66,18 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
         known_malicious=np.array([features.get("is_known_malicious", False)])
     )[0])
     
-    # Three-level risk thresholds (calibrated from validation)
-    if fused_score >= 0.20:
+    # Bound assertions
+    assert 0 <= ml_prob <= 1.0, "ML probability out of bounds"
+    assert 0 <= rule_score <= 1.0, "Rule score out of bounds"
+    assert 0 <= fused_score <= 1.0, "Fused score out of bounds"
+    
+    # Three-level risk thresholds
+    t_low = prod_config["risk_thresholds"]["low_to_suspicious"] if prod_config else 0.08
+    t_high = prod_config["risk_thresholds"]["suspicious_to_high"] if prod_config else 0.20
+    
+    if fused_score >= t_high:
         risk_level = "HIGH_RISK"
-    elif fused_score >= 0.08:
+    elif fused_score >= t_low:
         risk_level = "SUSPICIOUS"
     else:
         risk_level = "LOW_RISK"

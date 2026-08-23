@@ -10,7 +10,7 @@ def test_safe_url(engine):
     url = "https://www.example.com"
     features = extract_lexical_features(url)
     res = engine.evaluate(url, features)
-    assert res["risk_level"] == "SAFE"
+    assert res["risk_level"] == "LOW_RISK"
     assert len(res["triggered_rules"]) == 0
     assert res["raw_score"] == 0.0
 

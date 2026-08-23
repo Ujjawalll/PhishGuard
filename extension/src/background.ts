@@ -1,3 +1,5 @@
+const activeScanByTab: Record<number, { scanId: string, url: string }> = {};
+
 chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (details.frameId !== 0) return; // Only top-level
   
@@ -5,6 +7,7 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (!url.startsWith('http')) return;
   
   const scanId = crypto.randomUUID();
+  activeScanByTab[details.tabId] = { scanId, url };
 
   // Step 1: Invalidate stale result for this tab
   await chrome.storage.local.remove(`result_${details.tabId}`);
@@ -28,6 +31,11 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       },
       body: JSON.stringify({ url })
     });
+    
+    // Check if navigation happened while waiting
+    if (activeScanByTab[details.tabId]?.scanId !== scanId) {
+        return; // Discard stale fast scan
+    }
     
     let result: any = { risk_level: 'ANALYSIS_UNAVAILABLE', scanned_url: url, scan_id: scanId, scan_stage: 'FAST' };
     
@@ -76,6 +84,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       }).catch(() => null);
       
       if (res && res.ok) {
+        if (activeScanByTab[details.tabId]?.scanId !== scanId) {
+            return; // Discard stale deep scan
+        }
+        
         const deepRes = await res.json();
         deepRes.scanned_url = url;
         deepRes.scan_id = scanId;
@@ -88,6 +100,10 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
       }
     }
   } catch (err) {
+    if (activeScanByTab[details.tabId]?.scanId !== scanId) {
+        return; // Discard stale error
+    }
+    
     chrome.action.setBadgeBackgroundColor({ color: '#9CA3AF', tabId: details.tabId });
     chrome.action.setBadgeText({ text: '!', tabId: details.tabId });
     
@@ -95,6 +111,12 @@ chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
     await chrome.storage.local.set({ [`result_${details.tabId}`]: errResult });
     chrome.tabs.sendMessage(details.tabId, { type: 'UPDATE_WARNING', result: errResult }).catch(() => {});
   }
+});
+
+// Clean up state when tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+    delete activeScanByTab[tabId];
+    chrome.storage.local.remove(`result_${tabId}`).catch(() => {});
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

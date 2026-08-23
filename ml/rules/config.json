@@ -59,13 +59,13 @@
     {
       "rule_id": "R_DOMAIN_AGE",
       "category": "REPUTATION",
-      "weight": 20.0,
+      "weight": 10.0,
       "description": "Domain is very new (less than 30 days old)."
     },
     {
       "rule_id": "R_WHOIS_PRIVACY",
       "category": "REPUTATION",
-      "weight": 10.0,
+      "weight": 5.0,
       "description": "WHOIS privacy protection is enabled."
     },
     {
@@ -83,19 +83,19 @@
     {
       "rule_id": "R_PASSWORD_INPUT",
       "category": "BEHAVIOR",
-      "weight": 15.0,
+      "weight": 5.0,
       "description": "Page contains a password input field."
     },
     {
       "rule_id": "R_EXTERNAL_LINKS",
       "category": "BEHAVIOR",
-      "weight": 15.0,
+      "weight": 5.0,
       "description": "High ratio of external links (> 80%)."
     },
     {
       "rule_id": "R_META_REDIRECT",
       "category": "BEHAVIOR",
-      "weight": 15.0,
+      "weight": 5.0,
       "description": "Page contains a meta refresh redirect."
     },
     {

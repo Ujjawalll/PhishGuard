@@ -18,19 +18,25 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
         
     try:
-        paths = glob("ml/models/xgboost_*")
-        latest_path = sorted(paths)[-1]
-        pipeline = joblib.load(os.path.join(latest_path, "model.joblib"))
-        
         import json
+        with open("configs/production.json") as f:
+            prod_config = json.load(f)
+            
+        latest_path = prod_config["model"]["artifact_path"]
+        pipeline = joblib.load(os.path.join(latest_path, "model.joblib"))
         from ml.features.schema import CURRENT_FEATURE_SCHEMA_VERSION
         with open(os.path.join(latest_path, "metadata.json")) as f:
             metadata = json.load(f)
             feature_cols = metadata["features"]
             
+        from ml.features.schema import FEATURE_SCHEMA
+        if feature_cols != FEATURE_SCHEMA:
+            raise ValueError("Model feature schema does not match canonical FEATURE_SCHEMA")
+            
         scan_module.ml_pipeline = pipeline
         scan_module.rule_engine = RuleEngine()
         scan_module.explainer = Explainer(pipeline, feature_cols)
+        scan_module.prod_config = prod_config
         
         print("=== MODEL LOADING VERIFICATION ===")
         print(f"MODEL_PATH: {latest_path}")
