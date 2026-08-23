@@ -6,7 +6,7 @@ class RuleResult(BaseModel):
     rule_id: str
     triggered: bool
     score: float
-    severity: Literal["Low", "Medium", "High", "Critical"]
+    category: str
     description: str
     evidence: str
 

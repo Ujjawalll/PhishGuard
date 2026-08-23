@@ -73,12 +73,18 @@ def main():
         rule_scores.append(res['normalized_score'])
         
     rule_scores = np.array(rule_scores)
-    rule_thresh = 0.20 # Based on tuning
+    import json
+    with open("configs/production.json") as f:
+        config = json.load(f)
+    alpha = config["fusion"]["ml_weight"]
+    t_high = config["risk_thresholds"]["suspicious_to_high"]
+    
+    rule_thresh = t_high # Based on tuning
     rule_pred = (rule_scores >= rule_thresh).astype(int)
     
-    fusion = WeightedSumFusion(alpha=0.6, threshold=0.20)
+    fusion = WeightedSumFusion(alpha=alpha, threshold=t_high)
     fuse_prob = fusion.predict_proba(ml_prob, rule_scores)
-    fuse_pred = (fuse_prob >= 0.20).astype(int)
+    fuse_pred = (fuse_prob >= t_high).astype(int)
     
     print("\nCalculating metrics...")
     metrics = {

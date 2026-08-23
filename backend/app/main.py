@@ -90,11 +90,14 @@ def model_info():
     
     # Read model version from saved metadata
     try:
-        paths = glob("ml/models/xgboost_*")
-        latest_path = sorted(paths)[-1]
+        import json
+        with open("configs/production.json") as f:
+            config = json.load(f)
+        
+        latest_path = config["model"]["artifact_path"]
         with open(os.path.join(latest_path, "metadata.json")) as f:
             meta = json.load(f)
-            model_version = meta.get("model_version", os.path.basename(latest_path))
+            model_version = meta.get("model_version", config["model"]["production_model"])
     except Exception:
         pass
 

@@ -116,9 +116,12 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     else:
         print("none")
     print(f"FUSED SCORE = {fused_score}")
-    print(f"RISK THRESHOLD = 0.20 / 0.08")
+    print(f"T_LOW = {t_low}")
+    print(f"T_HIGH = {t_high}")
     print(f"FINAL RISK = {risk_level}")
     print("================================")
+    
+    model_version = prod_config["model"]["production_model"] if prod_config else "unknown"
     
     return ScanResult(
         scan_id=scan_id,
@@ -132,7 +135,7 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
         triggered_rules=rule_res["triggered_rules"],
         explanation=user_exp,
         analyst_explanation=None,
-        model_version="xgboost_v1.0",
+        model_version=model_version,
         feature_schema_version=CURRENT_FEATURE_SCHEMA_VERSION,
         rule_config_version=rule_engine.config["version"],
         scan_timestamp=datetime.utcnow(),
@@ -176,8 +179,8 @@ async def scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current
             "timestamp": result.scan_timestamp.isoformat()
         }))
         
-        # Recommend deep analysis if fused_score is borderline
-        deep_rec = (0.2 < result.fused_score < 0.8)
+        # Recommend deep analysis based on risk level
+        deep_rec = (result.risk_level == "SUSPICIOUS")
         
         return ScanResponse(
             scan_id=result.scan_id,
@@ -214,19 +217,22 @@ async def scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current
 async def deep_scan_url(req: ScanRequest, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     import subprocess
     import json
+    import asyncio
+    import sys
     
     # Run the worker as a subprocess
     try:
-        proc = subprocess.run(
-            ["python", "-m", "worker.main", req.url],
-            capture_output=True,
-            text=True,
-            timeout=15
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "worker.main", req.url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+        
         if proc.returncode != 0:
-            raise Exception("Worker failed")
+            raise Exception(f"Worker failed: {stderr.decode()}")
             
-        deep_features = json.loads(proc.stdout)
+        deep_features = json.loads(stdout)
     except Exception as e:
         raise HTTPException(status_code=503, detail="Deep analysis unavailable: " + str(e))
         

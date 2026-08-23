@@ -3,11 +3,13 @@ import numpy as np
 import os
 import joblib
 import json
+import uuid
+from datetime import datetime
 from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 from ml.rules.engine import RuleEngine
 from ml.fusion.strategies import WeightedSumFusion
 
-def evaluate(y_true, y_pred, y_prob):
+def evaluate_binary(y_true, y_pred, y_prob):
     cm = confusion_matrix(y_true, y_pred)
     if cm.shape == (2,2):
         tn, fp, fn, tp = cm.ravel()
@@ -30,7 +32,9 @@ def main():
         config = json.load(f)
         
     xgb_path = config["model"]["artifact_path"]
+    model_version = config["model"]["production_model"]
     t_high = config["risk_thresholds"]["suspicious_to_high"]
+    t_low = config["risk_thresholds"]["low_to_suspicious"]
     alpha = config["fusion"]["ml_weight"]
     
     print("Loading Validation Data...")
@@ -58,25 +62,39 @@ def main():
     
     fusion = WeightedSumFusion(alpha=alpha, threshold=t_high)
     fused_probs = fusion.predict_proba(ml_prob, rule_scores)
+    
+    # Binary evaluation considers >= T_high as positive (phishing)
     fused_preds = (fused_probs >= t_high).astype(int)
     
+    experiment_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow().isoformat()
+    
     results = {
+        "experiment_id": experiment_id,
+        "timestamp": timestamp,
         "dataset": "random/val_features.csv",
-        "model": xgb_path,
+        "split": "val",
+        "feature_set": "lexical",
+        "model": "xgboost",
+        "model_version": model_version,
+        "artifact_path": xgb_path,
         "fusion_strategy": "weighted_sum",
-        "ml_weight": alpha,
+        "ML_weight": alpha,
         "rule_weight": 1.0 - alpha,
-        "T_high": t_high,
-        "metrics": evaluate(y_val, fused_preds, fused_probs)
+        "T_LOW": t_low,
+        "T_HIGH": t_high,
+        "random_seed": 42,
+        "metrics_binary_high_risk": evaluate_binary(y_val, fused_preds, fused_probs)
     }
     
     print("\n=== Fusion Evaluation Report ===")
     print(json.dumps(results, indent=2))
     
     os.makedirs("experiments/reports", exist_ok=True)
-    with open("experiments/reports/fusion_evaluation.json", "w") as f:
+    out_path = f"experiments/reports/fusion_evaluation_{experiment_id}.json"
+    with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
-    print("\nSaved to experiments/reports/fusion_evaluation.json")
+    print(f"\nSaved to {out_path}")
 
 if __name__ == "__main__":
     main()

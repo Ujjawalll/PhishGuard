@@ -23,7 +23,13 @@ def main():
         feature_cols = json.load(f)["features"]
         
     rule_engine = RuleEngine()
-    fusion = WeightedSumFusion(alpha=0.6, threshold=0.20)
+    import json
+    with open("configs/production.json") as f:
+        config = json.load(f)
+    alpha = config["fusion"]["ml_weight"]
+    t_high = config["risk_thresholds"]["suspicious_to_high"]
+    
+    fusion = WeightedSumFusion(alpha=alpha, threshold=t_high)
     
     results = []
     

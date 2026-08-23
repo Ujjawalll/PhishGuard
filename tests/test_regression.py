@@ -36,7 +36,12 @@ def test_score_range_validation():
     
     assert 0 <= res["normalized_score"] <= 1.0, "Rule score must be bounded [0, 1]"
     
-    fusion = WeightedSumFusion(alpha=0.6, threshold=0.20)
+    with open("configs/production.json") as f:
+        config = json.load(f)
+    alpha = config["fusion"]["ml_weight"]
+    t_high = config["risk_thresholds"]["suspicious_to_high"]
+    
+    fusion = WeightedSumFusion(alpha=alpha, threshold=t_high)
     import numpy as np
     fused = fusion.predict_proba(np.array([0.9]), np.array([0.9]))[0]
     assert 0 <= fused <= 1.0, "Fused score must be bounded [0, 1]"
@@ -52,12 +57,16 @@ def test_feature_schema_parity():
     
     assert training_features == FEATURE_SCHEMA, "Training schema must match inference schema exactly"
     
-def test_fusion_known_malicious_override():
-    fusion = WeightedSumFusion(alpha=0.6, threshold=0.20)
+    with open("configs/production.json") as f:
+        config = json.load(f)
+    alpha = config["fusion"]["ml_weight"]
+    t_high = config["risk_thresholds"]["suspicious_to_high"]
+    
+    fusion = WeightedSumFusion(alpha=alpha, threshold=t_high)
     import numpy as np
     
     fused_normal = fusion.predict_proba(np.array([0.1]), np.array([0.1]), known_malicious=np.array([False]))[0]
-    assert fused_normal < 0.20
+    assert fused_normal < t_high
     
     fused_malicious = fusion.predict_proba(np.array([0.1]), np.array([0.1]), known_malicious=np.array([True]))[0]
     assert fused_malicious == 1.0

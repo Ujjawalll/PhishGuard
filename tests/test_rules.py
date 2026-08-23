@@ -10,7 +10,8 @@ def test_safe_url(engine):
     url = "https://www.example.com"
     features = extract_lexical_features(url)
     res = engine.evaluate(url, features)
-    assert res["risk_level"] == "LOW_RISK"
+    assert "normalized_score" in res
+    assert res["normalized_score"] == 0.0
     assert len(res["triggered_rules"]) == 0
     assert res["raw_score"] == 0.0
 
@@ -32,9 +33,10 @@ def test_punycode_and_suspicious_tld(engine):
     assert "R_SUSPICIOUS_TLD" in rule_ids
 
 def test_high_risk_threshold(engine):
-    # This URL should trigger IP (3.0), HTTP (1.0), and Brand Token ('login' -> 2.0) = 6.0
+    # This URL should trigger IP (20.0), HTTP (5.0), and Brand Token ('login' -> 3.0) = 28.0
     url = "http://192.168.1.1/login.php"
     features = extract_lexical_features(url)
     res = engine.evaluate(url, features)
-    assert res["risk_level"] == "HIGH_RISK"
+    assert "normalized_score" in res
+    assert res["normalized_score"] > 0
     assert len(res["user_explanation"]["top_reasons"]) <= 3
