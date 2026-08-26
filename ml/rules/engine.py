@@ -33,14 +33,14 @@ class RuleEngine:
             triggered_rules.append(self._build_result("R_AT_SYMBOL", evidence="Found '@' in URL"))
 
         # R_BRAND_TOKEN
-        if features.get("suspicious_token_count", 0) > 0:
+        if features.get("suspicious_token_count", 0) >= 2:
             count = features["suspicious_token_count"]
             triggered_rules.append(self._build_result("R_BRAND_TOKEN", evidence=f"Found {count} suspicious token(s)"))
             
         # R_LONG_URL
-        if features.get("url_length", 0) > 100:
+        if features.get("url_length", 0) > 200:
             length = features["url_length"]
-            triggered_rules.append(self._build_result("R_LONG_URL", evidence=f"Length is {length} > 100"))
+            triggered_rules.append(self._build_result("R_LONG_URL", evidence=f"Length is {length} > 200"))
             
         # R_DEEP_SUBDOMAINS
         if features.get("subdomain_count", 0) > 3:
@@ -52,8 +52,8 @@ class RuleEngine:
             triggered_rules.append(self._build_result("R_SUSPICIOUS_TLD", evidence=f"TLD .{ext.suffix} is high-risk"))
             
         # R_NO_HTTPS
-        if parsed.scheme == "http":
-            triggered_rules.append(self._build_result("R_NO_HTTPS", evidence="Scheme is HTTP"))
+        # if parsed.scheme == "http":
+        #     triggered_rules.append(self._build_result("R_NO_HTTPS", evidence="Scheme is HTTP"))
             
         # R_PUNYCODE
         if features.get("has_punycode"):

@@ -1,9 +1,6 @@
 import asyncio
 from backend.app.api.admin import manager
 
-import numpy as np
-from ml.fusion.strategies import WeightedSumFusion
-
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -54,17 +51,21 @@ def _run_scan_pipeline(url: str, stage: str, deep_features: dict = None) -> Scan
     # ML Pipeline has scaling built in now
     ml_prob = float(ml_pipeline.predict_proba(df_single)[0][1])
     
-    # 5. Fusion (OR Logic — evaluated as best performer)
+    # 5. Fusion (Hybrid: weighted average with rule-floor safety net)
+    # Weighted average prevents ML outliers from dominating.
+    # Rule-floor ensures strong rule signals aren't suppressed by a weak ML score.
     rule_score = rule_res["normalized_score"]
     
-    alpha = prod_config["fusion"]["ml_weight"] if prod_config else 0.6
-    fusion = WeightedSumFusion(alpha=alpha, threshold=0.5) # Threshold inside fusion is for legacy predict(), predict_proba ignores it
+    fused_score = 0.5 * ml_prob + 0.5 * rule_score
     
-    fused_score = float(fusion.predict_proba(
-        np.array([ml_prob]), 
-        np.array([rule_score]),
-        known_malicious=np.array([features.get("is_known_malicious", False)])
-    )[0])
+    # Safety net: if rules alone strongly signal phishing, don't let a weak ML
+    # model suppress it below the suspicious threshold
+    if rule_score >= 0.30:
+        fused_score = max(fused_score, rule_score)
+    
+    # Override: known malicious domains always get score 1.0
+    if features.get("is_known_malicious", False):
+        fused_score = 1.0
     
     # Bound assertions
     assert 0 <= ml_prob <= 1.0, "ML probability out of bounds"

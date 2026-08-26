@@ -6,6 +6,7 @@ import os
 from ml.rules.engine import RuleEngine
 from ml.fusion.strategies import WeightedSumFusion
 from sklearn.metrics import precision_score, recall_score, f1_score
+from datetime import datetime
 
 def main():
     print("Loading production config...")
@@ -16,7 +17,10 @@ def main():
     alpha = config["fusion"]["ml_weight"]
     
     with open(os.path.join(xgb_path, "metadata.json")) as f:
-        feature_cols = json.load(f)["features"]
+        metadata = json.load(f)
+        feature_cols = metadata["features"]
+        model_version = metadata.get("model_version", "v1.0")
+        feature_schema_version = metadata.get("feature_schema_version", "v1.0")
         
     val_df = pd.read_csv("ml/data/features/random/val_features.csv")
     y_val = val_df['label'].values
@@ -57,15 +61,55 @@ def main():
         })
         
     res_df = pd.DataFrame(results)
-    print("\nTop Thresholds by F1 (Candidate for T_high):")
-    print(res_df.sort_values('f1', ascending=False).head(10))
     
-    print("\nThresholds ensuring FPR < 0.01 (Candidate for T_low):")
-    print(res_df[res_df['fpr'] < 0.01].sort_values('recall', ascending=False).head(10))
+    # Selection Criteria
+    # T_HIGH: max F1 subject to FPR <= 0.05
+    # T_LOW: max recall subject to FPR <= 0.01
+    
+    t_high_candidates = res_df[res_df['fpr'] <= 0.05]
+    if not t_high_candidates.empty:
+        t_high_row = t_high_candidates.sort_values('f1', ascending=False).iloc[0]
+        selected_t_high = t_high_row['threshold']
+    else:
+        selected_t_high = res_df.sort_values('f1', ascending=False).iloc[0]['threshold']
+        
+    t_low_candidates = res_df[res_df['fpr'] <= 0.01]
+    if not t_low_candidates.empty:
+        t_low_row = t_low_candidates.sort_values('recall', ascending=False).iloc[0]
+        selected_t_low = t_low_row['threshold']
+    else:
+        selected_t_low = selected_t_high * 0.5
+        
+    print(f"\nSelected T_HIGH: {selected_t_high} (Criterion: max F1 subject to FPR <= 0.05)")
+    print(f"Selected T_LOW: {selected_t_low} (Criterion: max recall subject to FPR <= 0.01)")
     
     os.makedirs("experiments/reports", exist_ok=True)
     res_df.to_csv("experiments/reports/threshold_sweep.csv", index=False)
-    print("\nSaved to experiments/reports/threshold_sweep.csv")
+    
+    artifact = {
+        "dataset": "random",
+        "split": "val",
+        "feature_set": "url_lexical",
+        "model_version": model_version,
+        "feature_schema_version": feature_schema_version,
+        "fusion_strategy": "weighted_sum",
+        "ml_weight": alpha,
+        "rule_weight": 1.0 - alpha,
+        "candidate_thresholds": res_df['threshold'].tolist(),
+        "selected_t_low": selected_t_low,
+        "selected_t_high": selected_t_high,
+        "selection_criterion": {
+            "t_high": "max F1 subject to FPR <= 0.05",
+            "t_low": "max recall subject to FPR <= 0.01"
+        },
+        "random_seed": 42,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    with open("experiments/reports/threshold_artifact.json", "w") as f:
+        json.dump(artifact, f, indent=2)
+        
+    print("\nSaved artifacts to experiments/reports/threshold_sweep.csv and experiments/reports/threshold_artifact.json")
 
 if __name__ == "__main__":
     main()

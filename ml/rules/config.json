@@ -1,7 +1,7 @@
 {
   "categories": {
-    "URL_STRUCTURE": {"max": 25},
-    "DOMAIN": {"max": 30},
+    "URL_STRUCTURE": {"max": 40},
+    "DOMAIN": {"max": 50},
     "REPUTATION": {"max": 40},
     "SECURITY": {"max": 20},
     "CONTENT": {"max": 40},
@@ -18,19 +18,19 @@
       "rule_id": "R_AT_SYMBOL",
       "category": "URL_STRUCTURE",
       "weight": 20.0,
-      "description": "URL contains an '@' symbol, which can hide the actual destination."
+      "description": "URL contains an '@' symbol in the authority, which can hide the actual destination."
     },
     {
       "rule_id": "R_BRAND_TOKEN",
       "category": "URL_STRUCTURE",
-      "weight": 3.0,
-      "description": "URL contains suspicious tokens often used in phishing (e.g., login, secure)."
+      "weight": 10.0,
+      "description": "URL contains multiple suspicious tokens often used in phishing (e.g., login, secure, verify)."
     },
     {
       "rule_id": "R_LONG_URL",
       "category": "URL_STRUCTURE",
       "weight": 3.0,
-      "description": "URL is unusually long (over 100 characters)."
+      "description": "URL is unusually long (over 200 characters)."
     },
     {
       "rule_id": "R_DEEP_SUBDOMAINS",
@@ -41,13 +41,13 @@
     {
       "rule_id": "R_SUSPICIOUS_TLD",
       "category": "DOMAIN",
-      "weight": 7.0,
+      "weight": 25.0,
       "description": "Domain uses a high-risk Top-Level Domain (e.g., .tk, .ml)."
     },
     {
       "rule_id": "R_PUNYCODE",
       "category": "DOMAIN",
-      "weight": 15.0,
+      "weight": 25.0,
       "description": "URL hostname contains Punycode/IDN, often used for homoglyph attacks."
     },
     {
@@ -59,7 +59,7 @@
     {
       "rule_id": "R_DOMAIN_AGE",
       "category": "REPUTATION",
-      "weight": 10.0,
+      "weight": 20.0,
       "description": "Domain is very new (less than 30 days old)."
     },
     {
@@ -112,5 +112,5 @@
     }
   ],
   "max_possible_score": 100.0,
-  "version": "3.0"
+  "version": "4.0"
 }

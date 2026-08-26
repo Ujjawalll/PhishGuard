@@ -73,7 +73,7 @@ def extract_lexical_features(url: str) -> Dict[str, Any]:
         "hyphen_count": netloc.count('-'),
         "digit_count": digits,
         "special_char_count": sum(c in SPECIAL_CHARS for c in url_lower),
-        "has_at_symbol": '@' in url_lower,
+        "has_at_symbol": '@' in netloc,
         "has_ip_hostname": is_ip_address(netloc) if netloc else False,
         "suspicious_token_count": suspicious_count,
         "url_entropy": round(calculate_entropy(url_lower), 4),

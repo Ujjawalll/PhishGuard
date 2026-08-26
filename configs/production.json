@@ -11,7 +11,7 @@
     "rule_weight": 0.4
   },
   "risk_thresholds": {
-    "low_to_suspicious": 0.10,
-    "suspicious_to_high": 0.25
+    "low_to_suspicious": 0.30,
+    "suspicious_to_high": 0.70
   }
 }
