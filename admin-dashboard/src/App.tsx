@@ -7,11 +7,13 @@ import RiskChart from './components/RiskChart';
 import TopRulesTable from './components/TopRulesTable';
 import AlertsTable from './components/AlertsTable';
 import SystemHealth from './components/SystemHealth';
+import ModelEval from './components/ModelEval';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('admin_token'));
+  const [tab, setTab] = useState<'dashboard' | 'modellab'>('dashboard');
   const [stats, setStats] = useState<any>(null);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [topRules, setTopRules] = useState<any[]>([]);
@@ -70,21 +72,38 @@ export default function App() {
         </div>
       </div>
 
-      <StatsCards stats={stats} />
-
-      <div className="grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
-        <LiveFeed events={events} />
-        <RiskChart stats={stats} />
+      <div style={{ display: 'flex', gap: 8, margin: '16px 0 4px' }}>
+        <button onClick={() => setTab('dashboard')}
+          style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #334155', cursor: 'pointer', fontWeight: 600, fontSize: 14, background: tab === 'dashboard' ? '#3b82f6' : 'transparent', color: tab === 'dashboard' ? 'white' : '#94a3b8' }}>
+          Dashboard
+        </button>
+        <button onClick={() => setTab('modellab')}
+          style={{ padding: '8px 20px', borderRadius: 8, border: '1px solid #334155', cursor: 'pointer', fontWeight: 600, fontSize: 14, background: tab === 'modellab' ? '#3b82f6' : 'transparent', color: tab === 'modellab' ? 'white' : '#94a3b8' }}>
+          🧪 Model Lab
+        </button>
       </div>
 
-      <div className="grid" style={{ marginTop: 20 }}>
-        <AlertsTable alerts={alerts} />
-        <TopRulesTable rules={topRules} />
-      </div>
+      {tab === 'modellab' ? (
+        <ModelEval apiUrl={API_URL} token={token} />
+      ) : (
+        <>
+          <StatsCards stats={stats} />
 
-      <div style={{ marginTop: 20 }}>
-        <SystemHealth health={health} />
-      </div>
+          <div className="grid" style={{ gridTemplateColumns: '2fr 1fr' }}>
+            <LiveFeed events={events} />
+            <RiskChart stats={stats} />
+          </div>
+
+          <div className="grid" style={{ marginTop: 20 }}>
+            <AlertsTable alerts={alerts} />
+            <TopRulesTable rules={topRules} />
+          </div>
+
+          <div style={{ marginTop: 20 }}>
+            <SystemHealth health={health} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
