@@ -208,6 +208,14 @@ def _pid_alive(pid: int) -> bool:
             kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
+        # On Linux, verify it's not a zombie process
+        status_path = f"/proc/{pid}/status"
+        if os.path.exists(status_path):
+            with open(status_path) as f:
+                for line in f:
+                    if line.startswith("State:"):
+                        return "Z" not in line
         return True
     except OSError:
         return False
+

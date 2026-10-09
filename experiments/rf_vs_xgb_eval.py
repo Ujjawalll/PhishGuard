@@ -75,18 +75,28 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"Train: {len(X_train)} ({int(y_train.sum())} pos) | "
       f"Test: {len(X_test)} ({int(y_test.sum())} pos)  [80:20, stratified, seed={RANDOM_STATE}]")
 
-scale_pos = (y_train == 0).sum() / (y_train == 1).sum()
-cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+# In quick mode or on large datasets (>50k rows), downsample train for evaluation speed and stability
+MAX_TRAIN_SAMPLES = 25000 if args.quick else 50000
+if len(X_train) > MAX_TRAIN_SAMPLES:
+    print(f"Subsampling training set to {MAX_TRAIN_SAMPLES} rows for fast CV evaluation...")
+    _, X_train_sub, _, y_train_sub = train_test_split(
+        X_train, y_train, test_size=MAX_TRAIN_SAMPLES, stratify=y_train, random_state=RANDOM_STATE
+    )
+else:
+    X_train_sub, y_train_sub = X_train, y_train
+
+scale_pos = (y_train_sub == 0).sum() / (y_train_sub == 1).sum()
+cv = StratifiedKFold(n_splits=3 if args.quick else 5, shuffle=True, random_state=RANDOM_STATE)
 
 # ---------------------------------------------------------------- RF tuning
 print()
 print("=" * 70)
-print("3. RANDOM FOREST — RandomizedSearchCV (5-fold, scoring=F1)")
+print(f"3. RANDOM FOREST — RandomizedSearchCV ({cv.n_splits}-fold, scoring=F1)")
 print("=" * 70)
-rf_pipe = Pipeline([("clf", RandomForestClassifier(random_state=RANDOM_STATE, n_jobs=-1))])
+rf_pipe = Pipeline([("clf", RandomForestClassifier(random_state=RANDOM_STATE, n_jobs=2))])
 rf_dist = {
-    "clf__n_estimators": randint(100, 501),
-    "clf__max_depth": [None, 8, 12, 16, 24],
+    "clf__n_estimators": randint(50, 201) if args.quick else randint(100, 501),
+    "clf__max_depth": [None, 8, 12, 16],
     "clf__min_samples_split": randint(2, 11),
     "clf__min_samples_leaf": randint(1, 6),
     "clf__max_features": ["sqrt", "log2", None],
@@ -94,9 +104,9 @@ rf_dist = {
 }
 rf_search = RandomizedSearchCV(
     rf_pipe, rf_dist, n_iter=N_ITER, scoring="f1", cv=cv,
-    random_state=RANDOM_STATE, n_jobs=-1, verbose=0,
+    random_state=RANDOM_STATE, n_jobs=2, verbose=0,
 )
-rf_search.fit(X_train, y_train)
+rf_search.fit(X_train_sub, y_train_sub)
 print(f"Best CV F1: {rf_search.best_score_:.4f}")
 print(f"Best params: {json.dumps({k.replace('clf__', ''): v for k, v in rf_search.best_params_.items()}, default=str)}")
 rf = rf_search.best_estimator_
@@ -104,16 +114,16 @@ rf = rf_search.best_estimator_
 # ---------------------------------------------------------------- XGB tuning
 print()
 print("=" * 70)
-print("4. XGBOOST — RandomizedSearchCV (5-fold, scoring=F1)")
+print(f"4. XGBOOST — RandomizedSearchCV ({cv.n_splits}-fold, scoring=F1)")
 print("=" * 70)
 xgb_pipe = Pipeline([
     ("scaler", StandardScaler()),  # fitted on train folds only inside CV
-    ("clf", XGBClassifier(random_state=RANDOM_STATE, n_jobs=-1,
+    ("clf", XGBClassifier(random_state=RANDOM_STATE, n_jobs=2,
                           eval_metric="logloss", scale_pos_weight=scale_pos)),
 ])
 xgb_dist = {
-    "clf__n_estimators": randint(100, 501),
-    "clf__max_depth": randint(3, 11),
+    "clf__n_estimators": randint(50, 201) if args.quick else randint(100, 501),
+    "clf__max_depth": randint(3, 9),
     "clf__learning_rate": uniform(0.01, 0.29),
     "clf__subsample": uniform(0.6, 0.4),
     "clf__colsample_bytree": uniform(0.6, 0.4),
@@ -123,9 +133,9 @@ xgb_dist = {
 }
 xgb_search = RandomizedSearchCV(
     xgb_pipe, xgb_dist, n_iter=N_ITER, scoring="f1", cv=cv,
-    random_state=RANDOM_STATE, n_jobs=-1, verbose=0,
+    random_state=RANDOM_STATE, n_jobs=2, verbose=0,
 )
-xgb_search.fit(X_train, y_train)
+xgb_search.fit(X_train_sub, y_train_sub)
 print(f"Best CV F1: {xgb_search.best_score_:.4f}")
 print(f"Best params: {json.dumps({k.replace('clf__', ''): (round(v, 4) if isinstance(v, float) else v) for k, v in xgb_search.best_params_.items()}, default=str)}")
 xgb = xgb_search.best_estimator_
