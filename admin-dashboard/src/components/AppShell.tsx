@@ -88,7 +88,7 @@ export default function AppShell({
       case 'models': return 'Model Directory';
       case 'model-detail': return 'Model Specification';
       case 'compare': return 'Model Comparison Workspace';
-      case 'deep-learning': return 'Deep Learning Lab — CNN & RNN';
+      case 'deep-learning': return 'Deep Learning Lab — Character-Level CNN';
       case 'live-ops': return 'Live Threat Operations';
       default: return 'PhishGuard Analytics';
     }
@@ -132,7 +132,7 @@ export default function AppShell({
             </span>
           </div>
           <div style={{ color: 'rgba(243, 248, 247, 0.45)', fontSize: 11 }}>
-            Models: RF, XGBoost, LightGBM + Char-CNN, BiLSTM
+            Models: RF, XGBoost, LightGBM + Char-CNN
           </div>
         </div>
       </aside>

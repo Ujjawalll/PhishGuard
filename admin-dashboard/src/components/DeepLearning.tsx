@@ -4,8 +4,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianG
 const METRICS = ['Accuracy', 'Precision', 'Recall', 'F1-Score', 'Specificity', 'Sensitivity', 'ROC-AUC', 'MCC', 'PR-AUC'];
 
 const DL_COLORS: Record<string, string> = {
-  'Char-CNN': '#0D596B',
-  'BiLSTM': '#98D82A'
+  'Char-CNN': '#0D596B'
 };
 
 const PLOT_TITLES: Record<string, string> = {
@@ -43,8 +42,8 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
       const res = await fetch(url, { headers });
       if (res.ok) {
         const data = await res.json();
-        // only Deep Learning results belong on this page (test_metrics keyed by CNN/RNN)
-        if (data?.test_metrics && ('Char-CNN' in data.test_metrics || 'BiLSTM' in data.test_metrics)) {
+        // only Deep Learning results belong on this page (test_metrics keyed by CNN)
+        if (data?.test_metrics && 'Char-CNN' in data.test_metrics) {
           setResults(data);
         } else {
           setResults(null);
@@ -143,7 +142,7 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
       if (!res.ok) { setError(data.detail || 'Upload failed'); return; }
       setNotice(`Deep learning training started (job ${data.job_id}) on ${data.dataset.rows.toLocaleString()} URLs ` +
         `(${data.dataset.phishing} phishing / ${data.dataset.legitimate} legitimate). ` +
-        `Char-CNN and BiLSTM are trained sequentially on CPU — this can take several minutes.`);
+        `Char-CNN is trained on CPU — this can take several minutes.`);
       if (fileRef.current) fileRef.current.value = '';
       fetchJobs();
     } catch (e: any) {
@@ -177,12 +176,11 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
     <div>
       {/* Intro + Upload */}
       <div className="surface-card" style={{ marginBottom: 'var(--space-6)' }}>
-        <h3 className="card-title">Deep Learning Lab — Character-Level CNN vs RNN</h3>
+        <h3 className="card-title">Deep Learning Lab — Character-Level CNN</h3>
         <p className="card-subtitle" style={{ marginBottom: 16, maxWidth: 720 }}>
-          Train deep neural networks directly on raw URL strings: a 1D Char-CNN (learned n-gram detectors)
-          and a BiLSTM with attention pooling (sequential patterns). Upload a CSV with a <code>url</code> column
-          and a <code>label</code> column (0 = legitimate, 1 = phishing); a <code>source</code> column also works.
-          Minimum 50 rows, both classes, up to 100 MB.
+          Train deep neural networks directly on raw URL strings: a 1D Char-CNN (learned n-gram detectors).
+          Upload a CSV with a <code>url</code> column and a <code>label</code> column (0 = legitimate, 1 = phishing);
+          a <code>source</code> column also works. Minimum 50 rows, both classes, up to 100 MB.
         </p>
         {token ? (
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -192,7 +190,7 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
               Quick mode (fewer epochs)
             </label>
             <button onClick={handleUpload} disabled={uploading} className="btn-lime" style={{ padding: '8px 20px', fontSize: 13 }}>
-              {uploading ? 'Uploading…' : 'Train CNN + RNN'}
+              {uploading ? 'Uploading…' : 'Train Char-CNN'}
             </button>
           </div>
         ) : (
@@ -227,7 +225,7 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
       {jobs.length > 0 && (
         <div className="surface-card" style={{ marginBottom: 'var(--space-6)' }}>
           <h3 className="card-title">Deep Learning Training Jobs</h3>
-          <p className="card-subtitle" style={{ marginBottom: 14 }}>Every CNN/RNN run on this backend, newest first</p>
+          <p className="card-subtitle" style={{ marginBottom: 14 }}>Every Char-CNN run on this backend, newest first</p>
           <div className="modern-table-container">
             <table className="modern-table">
               <thead>
@@ -301,7 +299,7 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
 
           {/* Metrics matrix */}
           <div className="surface-card" style={{ marginBottom: 'var(--space-6)' }}>
-            <h3 className="card-title">CNN vs RNN — Performance Matrix (Test Set)</h3>
+            <h3 className="card-title">Char-CNN — Performance Matrix (Test Set)</h3>
             <p className="card-subtitle" style={{ marginBottom: 14 }}>
               {winner ? `Winner: ${winner} (F1 ${Number(results.test_metrics[winner]['F1-Score']).toFixed(4)})` : ''}
             </p>
@@ -440,13 +438,14 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
           {/* Hyperparameters + artifacts */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginBottom: 'var(--space-6)' }}>
             {models.map(m => {
-              const key = m === 'Char-CNN' ? 'best_params_cnn' : 'best_params_rnn';
+              const key = m === 'Char-CNN' ? 'best_params_cnn' : `best_params_${m.toLowerCase()}`;
               const params = results[key] || {};
+              const bestValF1 = m === 'Char-CNN' ? results.best_val_f1_cnn : results[`best_val_f1_${m.toLowerCase()}`];
               return (
                 <div key={m} className="surface-card">
                   <h3 className="card-title">{m} — Hyperparameters & Artifact</h3>
                   <p className="card-subtitle" style={{ marginBottom: 10 }}>
-                    Best val F1: {m === 'Char-CNN' ? Number(results.best_val_f1_cnn).toFixed(4) : Number(results.best_val_f1_rnn).toFixed(4)}
+                    Best val F1: {bestValF1 != null ? Number(bestValF1).toFixed(4) : '—'}
                   </p>
                   <div style={{ fontSize: 12, color: 'var(--color-text)', fontFamily: 'var(--font-mono)', wordBreak: 'break-word', lineHeight: 1.8 }}>
                     {Object.entries(params).map(([k, v]) => (
@@ -485,7 +484,7 @@ export default function DeepLearning({ apiUrl, token, onOpenLogin }: DeepLearnin
         <div className="surface-card">
           <h3 className="card-title">No Deep Learning Results Yet</h3>
           <p className="card-subtitle">
-            Upload a URL dataset above to train the Char-CNN and BiLSTM models. Results, training curves,
+            Upload a URL dataset above to train the Char-CNN model. Results, training curves,
             error analysis, and plots will appear here.
           </p>
         </div>

@@ -26,7 +26,7 @@ PLOT_FILES = {
 }
 EVAL_SCRIPTS = {
     "classic": os.path.join("experiments", "rf_vs_xgb_eval.py"),
-    "dl": os.path.join("experiments", "cnn_rnn_eval.py"),
+    "dl": os.path.join("experiments", "cnn_eval.py"),
 }
 MIN_ROWS = 50
 

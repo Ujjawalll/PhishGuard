@@ -1,4 +1,4 @@
-"""Character-level CNN vs RNN (BiLSTM) training & evaluation for PhishGuard.
+"""Character-level CNN training & evaluation for PhishGuard.
 
 Deep-learning counterpart to ``experiments/rf_vs_xgb_eval.py`` on the
 ``feat/phiusiil-model-eval-redesign`` branch. It follows the same job
@@ -8,13 +8,13 @@ contract so the redesigned evaluation hooks pick it up unchanged:
   ``backend/app/api/eval.py`` via subprocess with ``PYTHONPATH=<repo root>``.
 * Outputs written into ``--out``:
     - ``results.json``      — dataset summary, chosen hyperparameters, and
-      ``test_metrics`` keyed by display model name ("Char-CNN", "BiLSTM")
+      ``test_metrics`` keyed by display model name ("Char-CNN")
       with the exact metric keys the redesigned dashboard consumes
       (Accuracy, Precision, Recall, F1-Score, Specificity, Sensitivity,
       ROC-AUC, MCC, PR-AUC, Train-Accuracy, Train-F1), plus per-epoch
       ``training_history`` and an ``error_analysis`` block with false
       positive / false negative counts and examples.
-    - ``metrics_matrix.csv`` — side-by-side metrics table.
+    - ``metrics_matrix.csv`` — metrics table.
     - ``confusion_matrices.png``, ``roc_curves.png``, ``pr_curves.png``,
       ``feature_importances.png`` — the canonical plot names whitelisted
       by the eval API (``PLOT_FILES``), plus ``training_history.png`` and
@@ -27,9 +27,9 @@ Requires PyTorch (``uv add torch`` or ``pip install torch``); every other
 dependency is already declared in ``pyproject.toml``.
 
 Example:
-    PYTHONPATH=. python experiments/cnn_rnn_eval.py \
+    PYTHONPATH=. python experiments/cnn_eval.py \
         --dataset ml/data/processed/PhiUSIIL_Phishing_URL_Dataset.csv \
-        --out experiments/reports/cnn_rnn --quick
+        --out experiments/reports/char_cnn --quick
 """
 from __future__ import annotations
 
@@ -69,7 +69,6 @@ from sklearn.model_selection import train_test_split
 try:
     import torch
     from torch import Tensor, nn
-    from torch.nn.utils.rnn import pad_packed_sequence, pack_padded_sequence
     from torch.utils.data import DataLoader, Dataset
 except ImportError:  # pragma: no cover
     sys.exit(
@@ -86,22 +85,22 @@ REPORT_METRICS = [
 
 # Display names used as keys in results.json["test_metrics"]; the redesigned
 # ComparisonWorkspace derives its model list from these keys automatically.
-MODEL_DISPLAY = {"cnn": "Char-CNN", "rnn": "BiLSTM"}
-MODEL_ARTIFACT = {"cnn": "char_cnn", "rnn": "bi_lstm"}
+MODEL_DISPLAY = {"cnn": "Char-CNN"}
+MODEL_ARTIFACT = {"cnn": "char_cnn"}
 
 
 # --------------------------------------------------------------------------- config
 @dataclass(slots=True)
 class TrainingConfig:
-    """All knobs for one CNN/RNN training job (CLI-overridable).
+    """All knobs for one CNN training job (CLI-overridable).
 
     Attributes mirror the argparse flags; ``quick`` adjusts the defaults
     exactly like ``--quick`` does in ``experiments/rf_vs_xgb_eval.py``.
     """
 
-    model: str = "both"                      # {"cnn", "rnn", "both"}
+    model: str = "cnn"                       # {"cnn"}
     dataset: str = os.path.join("ml", "data", "processed", "cleaned_dataset.csv")
-    out: str = os.path.join("experiments", "reports", "cnn_rnn")
+    out: str = os.path.join("experiments", "reports", "char_cnn")
     quick: bool = False
     epochs: int = 0                          # 0 -> pick from quick mode
     batch_size: int = 0                      # 0 -> pick from quick mode
@@ -119,8 +118,6 @@ class TrainingConfig:
     embedding_dim: int = 64
     cnn_num_filters: int = 128
     cnn_kernel_sizes: tuple[int, ...] = (3, 5, 7)
-    rnn_hidden_size: int = 64
-    rnn_num_layers: int = 2
     dropout: float = 0.3
 
     def resolve_defaults(self) -> None:
@@ -132,9 +129,9 @@ class TrainingConfig:
         if self.max_train_samples <= 0:
             self.max_train_samples = 20_000 if self.quick else 100_000
 
-    def arch_params(self, kind: str) -> dict[str, Any]:
-        """Hyperparameter record for one architecture, for results/artifacts."""
-        common = {
+    def arch_params(self, kind: str = "cnn") -> dict[str, Any]:
+        """Hyperparameter record for architecture, for results/artifacts."""
+        return {
             "epochs": self.epochs,
             "batch_size": self.batch_size,
             "learning_rate": self.learning_rate,
@@ -144,19 +141,9 @@ class TrainingConfig:
             "early_stopping_patience": self.patience,
             "seed": self.seed,
             "threshold": self.threshold,
+            "num_filters": self.cnn_num_filters,
+            "kernel_sizes": list(self.cnn_kernel_sizes),
         }
-        if kind == "cnn":
-            common |= {
-                "num_filters": self.cnn_num_filters,
-                "kernel_sizes": list(self.cnn_kernel_sizes),
-            }
-        else:
-            common |= {
-                "hidden_size": self.rnn_hidden_size,
-                "num_layers": self.rnn_num_layers,
-                "pooling": "additive_attention",
-            }
-        return common
 
     def device_name(self) -> str:
         if self.device != "auto":
@@ -327,50 +314,6 @@ class CharCNN(nn.Module):
         return self.head(self.dropout(h)).squeeze(-1)
 
 
-class BiLSTMClassifier(nn.Module):
-    """Bidirectional LSTM with additive attention pooling (URL classifier).
-
-    The BiLSTM models position-dependent sequential structure of the URL
-    (e.g. brand token followed by deceptive suffix); attention pooling
-    learns which timesteps matter instead of trusting only the last state.
-    """
-
-    def __init__(
-        self,
-        vocab_size: int,
-        embedding_dim: int = 64,
-        hidden_size: int = 64,
-        num_layers: int = 2,
-        dropout: float = 0.3,
-    ) -> None:
-        super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD_ID)
-        self.lstm = nn.LSTM(
-            embedding_dim,
-            hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=True,
-            dropout=dropout if num_layers > 1 else 0.0,
-        )
-        self.attention = nn.Sequential(nn.Linear(2 * hidden_size, 2 * hidden_size), nn.Tanh(), nn.Linear(2 * hidden_size, 1, bias=False))
-        self.dropout = nn.Dropout(dropout)
-        self.head = nn.Sequential(nn.Linear(2 * hidden_size, 64), nn.ReLU(), nn.Dropout(dropout), nn.Linear(64, 1))
-
-    def forward(self, tokens: Tensor) -> Tensor:
-        """tokens: (B, T) int64 -> logits: (B,) float."""
-        lengths = tokens.ne(PAD_ID).sum(dim=1).clamp(min=1)  # (B,)
-        x = self.dropout(self.embedding(tokens))
-        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
-        out, _ = self.lstm(packed)
-        out, _ = pad_packed_sequence(out, batch_first=True)  # (B, T', 2H)
-        mask = torch.arange(out.size(1), device=tokens.device)[None, :] < lengths[:, None]
-        scores = self.attention(out).squeeze(-1).masked_fill(~mask, -1e9)
-        weights = torch.softmax(scores, dim=1)
-        pooled = (out * weights.unsqueeze(-1)).sum(dim=1)
-        return self.head(self.dropout(pooled)).squeeze(-1)
-
-
 def build_model(kind: str, config: TrainingConfig, vocab_size: int) -> nn.Module:
     if kind == "cnn":
         return CharCNN(
@@ -378,14 +321,6 @@ def build_model(kind: str, config: TrainingConfig, vocab_size: int) -> nn.Module
             embedding_dim=config.embedding_dim,
             num_filters=config.cnn_num_filters,
             kernel_sizes=config.cnn_kernel_sizes,
-            dropout=config.dropout,
-        )
-    if kind == "rnn":
-        return BiLSTMClassifier(
-            vocab_size=vocab_size,
-            embedding_dim=config.embedding_dim,
-            hidden_size=config.rnn_hidden_size,
-            num_layers=config.rnn_num_layers,
             dropout=config.dropout,
         )
     raise ValueError(f"unknown model kind: {kind}")
@@ -450,7 +385,7 @@ def train_one_model(
     splits: dict[str, Any],
     device: str,
 ) -> dict[str, Any] | None:
-    """Train one architecture end-to-end; return its result block, or None on failure.
+    """Train architecture end-to-end; return its result block, or None on failure.
 
     Early stopping restores the best validation-F1 weights; the untouched
     test split is only read after training finishes.
@@ -458,7 +393,7 @@ def train_one_model(
     name = MODEL_DISPLAY[kind]
     print()
     print("=" * 70)
-    print(f"{'4' if kind == 'cnn' else '5'}. TRAINING — {name} ({device})")
+    print(f"4. TRAINING — {name} ({device})")
     print("=" * 70)
 
     train_urls: pd.Series = splits["train_urls"]
@@ -633,7 +568,6 @@ def load_artifact(artifact_dir: str) -> tuple[nn.Module, TrainingConfig, CharVoc
         embedding_dim=arch["embedding_dim"], dropout=arch["dropout"],
         cnn_num_filters=arch.get("num_filters", 128),
         cnn_kernel_sizes=tuple(arch.get("kernel_sizes", (3, 5, 7))),
-        rnn_hidden_size=arch.get("hidden_size", 64), rnn_num_layers=arch.get("num_layers", 2),
     )
     vocab = CharVocabulary(max_url_len=bundle["vocab"]["max_url_len"], chars=bundle["vocab"]["chars"])
     model = build_model(bundle["model_kind"], config, vocab.size)
@@ -690,7 +624,7 @@ def plot_roc_pr(results: list[dict[str, Any]], out_dir: str) -> None:
 
 
 def plot_feature_importances(results: list[dict[str, Any]], vocab: CharVocabulary, out_dir: str) -> None:
-    """Character-class signal strength from learned embeddings (per model).
+    """Character-class signal strength from learned embeddings.
 
     Mean L2 norm of embedding rows grouped by character class is a cheap,
     faithful proxy for which input groups the network leans on — the DNN
@@ -755,9 +689,9 @@ def error_analysis(r: dict[str, Any]) -> dict[str, Any]:
 def parse_args() -> TrainingConfig:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dataset", default=os.path.join("ml", "data", "processed", "cleaned_dataset.csv"))
-    parser.add_argument("--out", default=os.path.join("experiments", "reports", "cnn_rnn"))
+    parser.add_argument("--out", default=os.path.join("experiments", "reports", "char_cnn"))
     parser.add_argument("--quick", action="store_true", help="fewer epochs + subsampled training for faster runs")
-    parser.add_argument("--model", choices=["cnn", "rnn", "both"], default="both")
+    parser.add_argument("--model", choices=["cnn"], default="cnn")
     parser.add_argument("--epochs", type=int, default=0, help="0 = quick/full default")
     parser.add_argument("--batch-size", type=int, default=0, help="0 = quick/full default")
     parser.add_argument("--learning-rate", type=float, default=1e-3)
@@ -799,10 +733,6 @@ def main() -> int:
     print("=" * 70)
     print("2. PREPROCESSING — CHARACTER ENCODING & SPLITS")
     print("=" * 70)
-    # Raw URL strings only; no fitted transformers, so no leakage is possible
-    # (same guarantee as the lexical-feature pipeline). Lowercasing mirrors
-    # ml/features/lexical.py normalization. A stratified 10% validation split
-    # is carved out for early stopping; the 10% test split stays untouched.
     seed_everything(config.seed)
     train_urls, val_urls, test_urls, y_train, y_val, y_test = build_splits(df, config.seed)
     print(f"Train: {len(train_urls)} ({int(y_train.sum())} pos) | "
@@ -813,13 +743,11 @@ def main() -> int:
 
     print()
     print("=" * 70)
-    print("3. MODEL ARCHITECTURES")
+    print("3. MODEL ARCHITECTURE")
     print("=" * 70)
     print(f"Char-CNN : embedding({config.embedding_dim}) -> parallel Conv1d "
           f"({'/'.join(map(str, config.cnn_kernel_sizes))} x {config.cnn_num_filters} filters) "
           f"-> global max-pool -> MLP")
-    print(f"BiLSTM  : embedding({config.embedding_dim}) -> {config.rnn_num_layers}-layer "
-          f"BiLSTM(hidden={config.rnn_hidden_size}) -> additive attention pooling -> MLP")
     print(f"Device: {device} | epochs={config.epochs} (early stop patience={config.patience}) | "
           f"batch={config.batch_size} | lr={config.learning_rate}")
 
@@ -827,14 +755,14 @@ def main() -> int:
         "train_urls": train_urls, "val_urls": val_urls, "test_urls": test_urls,
         "y_train": y_train, "y_val": y_val, "y_test": y_test,
     }
-    kinds = ["cnn", "rnn"] if config.model == "both" else [config.model]
+    kinds = ["cnn"]
     results: list[dict[str, Any]] = []
     for kind in kinds:
         try:
             r = train_one_model(kind, config, vocab, splits, device)
             if r is not None:
                 results.append(r)
-        except Exception as exc:  # keep the job alive if one architecture fails
+        except Exception as exc:
             print(f"\n[ERROR] training {MODEL_DISPLAY[kind]} failed: {exc}")
             traceback.print_exc()
     if not results:
@@ -843,19 +771,16 @@ def main() -> int:
 
     print()
     print("=" * 70)
-    print("6. EVALUATION ON UNTOUCHED TEST SET — SIDE-BY-SIDE")
+    print("5. EVALUATION ON UNTOUCHED TEST SET")
     print("=" * 70)
     header = f"{'Metric':<14}" + "".join(f"{r['name']:>12}" for r in results)
     print(header)
     for k in REPORT_METRICS:
         print(f"{k:<14}" + "".join(f"{r['metrics'][k]:>12.4f}" for r in results))
-    if len(results) > 1:
-        winner = max(results, key=lambda r: r["metrics"]["F1-Score"])
-        print(f"\nWINNER: {winner['name']} (test F1 = {winner['metrics']['F1-Score']:.4f})")
 
     print()
     print("=" * 70)
-    print("7. ERROR ANALYSIS — FALSE POSITIVES / FALSE NEGATIVES")
+    print("6. ERROR ANALYSIS — FALSE POSITIVES / FALSE NEGATIVES")
     print("=" * 70)
     analysis: dict[str, Any] = {}
     err_rows: list[dict[str, Any]] = []
@@ -877,7 +802,7 @@ def main() -> int:
 
     print()
     print("=" * 70)
-    print("8. PLOTS & ARTIFACTS")
+    print("7. PLOTS & ARTIFACTS")
     print("=" * 70)
     plot_confusion_matrices(results, config.out)
     plot_roc_pr(results, config.out)
