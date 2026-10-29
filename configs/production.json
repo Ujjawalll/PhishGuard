@@ -1,7 +1,7 @@
 {
   "model": {
-    "production_model": "xgboost_v2.0_20261009T121221",
-    "artifact_path": "ml/models/xgboost_v2.0_20261009T121221",
+    "production_model": "xgboost_v1.0_20261012T141841",
+    "artifact_path": "ml/models/xgboost_v1.0_20261012T141841",
     "feature_schema_version": "v1.0",
     "model_type": "xgboost"
   },
